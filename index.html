@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>ContiNote</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%BC%3C/text%3E%3C/svg%3E" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  :root{
+    --bg:#F9F6F0; --surface:#FFFFFF; --surface-2:#F1ECE2;
+    --text:#2B2730; --text-dim:#8A8390;
+    --accent:#6B5B95; --accent-soft:#6B5B9522; --border:#E4DDD0;
+  }
+  html.dark{
+    --bg:#0F0E13; --surface:#1C1A22; --surface-2:#242230;
+    --text:#F3F1F7; --text-dim:#8E899B;
+    --accent:#9D4EDD; --accent-soft:#9D4EDD33; --border:#322E3D;
+  }
+  *{ -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; overscroll-behavior:none; }
+  body{ background:var(--bg); color:var(--text); }
+  .no-scrollbar::-webkit-scrollbar{ display:none; }
+  .no-scrollbar{ scrollbar-width:none; -ms-overflow-style:none; }
+  #baseCanvas{ transition:filter .2s ease; }
+  html.dark #baseCanvas{ filter:invert(1) hue-rotate(180deg); }
+  .sticker{
+    position:absolute; touch-action:none; cursor:grab;
+    transform:translate(-50%,-50%); white-space:nowrap; z-index:5;
+  }
+  .sticker.songform{
+    padding:.15rem .6rem; border-radius:.5rem; background:var(--accent); color:#fff;
+    font-size:.85rem; box-shadow:0 2px 6px rgba(0,0,0,.25);
+  }
+  .sticker.text-memo{
+    padding:.4rem .6rem; border-radius:.5rem; background:#FFE58A; color:#4A3B00;
+    font-size:.8rem; box-shadow:0 2px 6px rgba(0,0,0,.2); max-width:40vw; white-space:normal;
+  }
+  .del-badge{
+    position:absolute; top:-10px; right:-10px; width:20px; height:20px; border-radius:50%;
+    background:#E0484B; color:#fff; font-size:13px; line-height:1; display:flex;
+    align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.4);
+  }
+  #stickerLayer.locked .sticker{ pointer-events:none !important; }
+  .crop-handle{
+    position:absolute; width:24px; height:24px; border-radius:50%;
+    background:var(--accent); border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4);
+    touch-action:none;
+  }
+  #cropBox{ box-shadow:0 0 0 9999px rgba(0,0,0,.45); }
+  input[type="range"]{ accent-color:var(--accent); }
+  #bottomNav{ padding-bottom:env(safe-area-inset-bottom, 0px); }
+</style>
+</head>
+<body class="flex flex-col" style="height:100dvh">
+
+  <!-- ===== 헤더 ===== -->
+  <header class="shrink-0 h-14 flex items-center justify-between px-4 border-b" style="border-color:var(--border)">
+    <h1 class="font-bold text-lg tracking-tight">ContiNote</h1>
+    <button id="lockBtn" class="w-9 h-9 flex items-center justify-center rounded-full" style="background:var(--surface-2)">
+      <span id="lockClosedIcon" class="w-5 h-5" style="color:var(--text)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">
+          <rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+        </svg>
+      </span>
+      <span id="lockOpenIcon" class="w-5 h-5" style="color:var(--text);display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">
+          <rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.76-2.22"/>
+        </svg>
+      </span>
+    </button>
+  </header>
+
+  <!-- ===== 송폼 칩 바 (인도자 메뉴 + 편집모드) ===== -->
+  <div id="songformBar" class="overflow-x-auto no-scrollbar flex-nowrap items-center gap-2 px-3 py-2 border-b" style="display:none;border-color:var(--border)"></div>
+
+  <!-- ===== 메인 뷰어 ===== -->
+  <main id="viewer" class="relative flex-1 min-h-0 overflow-hidden" style="background:var(--surface)">
+
+    <div id="emptyState" class="absolute inset-0 flex-col items-center justify-center gap-3 px-8 text-center" style="display:none">
+      <span class="w-14 h-14" style="color:var(--text-dim)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>
+        </svg>
+      </span>
+      <p class="font-semibold">등록된 악보가 없습니다</p>
+      <p class="text-sm" style="color:var(--text-dim)">하단 인도자 메뉴에서 악보를 추가해보세요</p>
+      <button id="emptyAddBtn" class="mt-2 px-5 py-2.5 rounded-xl text-white font-semibold" style="background:var(--accent)">악보 추가하기</button>
+    </div>
+
+    <canvas id="baseCanvas" class="absolute inset-0"></canvas>
+    <div id="stickerLayer" class="absolute inset-0 pointer-events-none"></div>
+    <canvas id="userCanvas" class="absolute inset-0" style="pointer-events:none"></canvas>
+
+    <div id="navUI" class="absolute inset-0" style="display:none">
+      <button id="hotspotPrev" class="absolute"></button>
+      <button id="hotspotNext" class="absolute"></button>
+      <div id="navIndicator" class="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-semibold" style="background:rgba(0,0,0,.5);color:#fff"></div>
+    </div>
+  </main>
+
+  <!-- ===== 인도자 툴바 ===== -->
+  <div id="leaderToolbar" class="overflow-x-auto no-scrollbar flex-nowrap items-center gap-2 px-3 py-2 border-t" style="display:none;border-color:var(--border)">
+    <button id="addSongBtn" class="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-sm font-semibold" style="background:var(--accent)">
+      <span class="w-4 h-4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M12 5v14M5 12h14"/></svg></span>
+      악보 추가
+    </button>
+    <button id="manageSongBtn" class="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-sm font-semibold" style="border-color:var(--border)">
+      <span class="w-4 h-4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span>
+      곡 관리
+    </button>
+  </div>
+
+  <!-- ===== 사용자 펜 툴바 ===== -->
+  <div id="penToolbar" class="overflow-x-auto no-scrollbar flex-nowrap items-center gap-3 px-3 py-2 border-t" style="display:none;border-color:var(--border)">
+    <div id="colorSwatches" class="shrink-0 flex items-center gap-1.5"></div>
+    <input id="sizeRange" type="range" min="1" max="12" value="3" class="shrink-0 w-20" />
+    <button id="eraseBtn" class="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl border" style="border-color:var(--border)">
+      <span class="w-4.5 h-4.5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg></span>
+    </button>
+    <button id="textMemoBtn" class="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-semibold" style="border-color:var(--border)">
+      <span class="w-4 h-4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg></span>
+      메모
+    </button>
+  </div>
+
+  <!-- ===== 하단 3대 메뉴 ===== -->
+  <nav id="bottomNav" class="shrink-0 flex items-stretch border-t" style="border-color:var(--border);background:var(--surface)">
+    <button id="navLeaderBtn" class="flex-1 flex items-center justify-center py-3">
+      <span class="w-6 h-6">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">
+          <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+        </svg>
+      </span>
+    </button>
+    <button id="navUserBtn" class="flex-1 flex items-center justify-center py-3">
+      <span class="w-6 h-6">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">
+          <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+        </svg>
+      </span>
+    </button>
+    <button id="navSettingsBtn" class="flex-1 flex items-center justify-center py-3">
+      <span class="w-6 h-6">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
+        </svg>
+      </span>
+    </button>
+  </nav>
+
+  <input type="file" id="fileInput" accept="image/*" class="hidden" />
+
+  <!-- ===== Crop 모달 ===== -->
+  <div id="cropModal" class="fixed inset-0 z-[60] flex-col" style="display:none;background:var(--bg)">
+    <div class="flex gap-2 p-3 shrink-0">
+      <button id="cropAutoBtn" class="flex-1 py-2 rounded-xl font-semibold border-2">Auto-Crop</button>
+      <button id="cropManualBtn" class="flex-1 py-2 rounded-xl font-semibold border-2">Manual-Crop</button>
+    </div>
+    <div class="flex-1 overflow-auto flex items-center justify-center p-3 min-h-0">
+      <div id="cropStage" class="relative inline-block leading-none">
+        <img id="cropDisplayImg" class="block max-w-[82vw] max-h-[58vh] select-none pointer-events-none" draggable="false" />
+        <div id="cropBox" class="absolute border-2" style="display:none;border-color:var(--accent)">
+          <div class="crop-handle" data-corner="tl" style="left:0;top:0;transform:translate(-50%,-50%)"></div>
+          <div class="crop-handle" data-corner="tr" style="left:100%;top:0;transform:translate(-50%,-50%)"></div>
+          <div class="crop-handle" data-corner="bl" style="left:0;top:100%;transform:translate(-50%,-50%)"></div>
+          <div class="crop-handle" data-corner="br" style="left:100%;top:100%;transform:translate(-50%,-50%)"></div>
+        </div>
+      </div>
+    </div>
+    <div class="flex gap-2 p-3 shrink-0 border-t" style="border-color:var(--border)">
+      <button id="cropCancelBtn" class="flex-1 py-2.5 rounded-xl border font-semibold" style="border-color:var(--border)">취소</button>
+      <button id="cropApplyBtn" class="flex-1 py-2.5 rounded-xl text-white font-semibold" style="background:var(--accent)">적용</button>
+    </div>
+  </div>
+
+  <!-- ===== 곡 관리 모달 ===== -->
+  <div id="songManagerModal" class="fixed inset-0 z-50 items-end sm:items-center justify-center" style="display:none">
+    <div class="absolute inset-0 bg-black/50" data-close-song-manager></div>
+    <div class="relative w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl flex flex-col" style="max-height:80vh;background:var(--surface)">
+      <div class="flex items-center justify-between px-4 py-3 border-b" style="border-color:var(--border)">
+        <h2 class="font-bold">곡 관리</h2>
+        <button data-close-song-manager class="p-1 w-6 h-6">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="songManagerList" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
+      <div class="p-3 border-t" style="border-color:var(--border)">
+        <button id="songManagerAddBtn" class="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white font-semibold" style="background:var(--accent)">
+          <span class="w-4 h-4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M12 5v14M5 12h14"/></svg></span>
+          악보 추가
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 설정 모달 ===== -->
+  <div id="settingsModal" class="fixed inset-0 z-50 items-end sm:items-center justify-center" style="display:none">
+    <div class="absolute inset-0 bg-black/50" data-close-settings></div>
+    <div class="relative w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl overflow-y-auto" style="max-height:85vh;background:var(--surface)">
+      <div class="flex items-center justify-between px-4 py-3 border-b sticky top-0" style="border-color:var(--border);background:var(--surface)">
+        <h2 class="font-bold">설정</h2>
+        <button data-close-settings class="p-1 w-6 h-6">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="p-4 space-y-6">
+        <section>
+          <h3 class="text-sm font-semibold mb-2" style="color:var(--text-dim)">테마</h3>
+          <div class="flex gap-2">
+            <button id="themeLightBtn" class="flex-1 py-2 rounded-xl border font-medium">라이트</button>
+            <button id="themeDarkBtn" class="flex-1 py-2 rounded-xl border font-medium">다크</button>
+          </div>
+        </section>
+        <section>
+          <h3 class="text-sm font-semibold mb-2" style="color:var(--text-dim)">곡 넘김 방향</h3>
+          <div class="flex gap-2">
+            <button id="navHBtn" class="flex-1 py-2 rounded-xl border font-medium">좌우</button>
+            <button id="navVBtn" class="flex-1 py-2 rounded-xl border font-medium">상하</button>
+          </div>
+        </section>
+        <section>
+          <h3 class="text-sm font-semibold mb-2" style="color:var(--text-dim)">송폼 파트 관리</h3>
+          <div id="songformManageList" class="flex flex-wrap gap-2 mb-3"></div>
+          <div class="flex gap-2">
+            <input id="newLabelInput" maxlength="6" placeholder="새 파트명" class="flex-1 px-3 py-2 rounded-xl border bg-transparent text-sm" style="border-color:var(--border)" />
+            <button id="addLabelBtn" class="px-4 rounded-xl text-white text-sm font-semibold" style="background:var(--accent)">추가</button>
+          </div>
+        </section>
+        <section>
+          <h3 class="text-sm font-semibold mb-2" style="color:var(--text-dim)">Google Drive 연동</h3>
+          <button id="driveConnectBtn" class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border" style="border-color:var(--border)">
+            <span class="w-4.5 h-4.5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg></span>
+            <span id="driveStatus">연동하기 (Client ID 설정 필요)</span>
+          </button>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 텍스트 메모 모달 ===== -->
+  <div id="textMemoModal" class="fixed inset-0 z-50 items-center justify-center p-6" style="display:none">
+    <div class="absolute inset-0 bg-black/50" data-close-textmemo></div>
+    <div class="relative w-full max-w-sm rounded-2xl p-4" style="background:var(--surface)">
+      <h2 class="font-bold mb-3">텍스트 메모</h2>
+      <textarea id="textMemoInput" rows="3" class="w-full px-3 py-2 rounded-xl border bg-transparent text-sm" style="border-color:var(--border)" placeholder="메모 내용을 입력하세요"></textarea>
+      <div class="flex gap-2 mt-3">
+        <button data-close-textmemo class="flex-1 py-2 rounded-xl border font-semibold" style="border-color:var(--border)">취소</button>
+        <button id="textMemoAddBtn" class="flex-1 py-2 rounded-xl text-white font-semibold" style="background:var(--accent)">추가</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ==================================================
+   ContiNote (콘티노트) - Vanilla JS 단일 파일 앱
+   ================================================== */
+
+/* ---------- 작은 아이콘 (동적으로 생성되는 목록용) ---------- */
+const ICON = {
+  up: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M18 15l-6-6-6 6"/></svg>`,
+  down: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M6 9l6 6 6-6"/></svg>`,
+  edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>`,
+};
+
+/* ---------- 상태 ---------- */
+const state = {
+  theme: 'light',
+  navDirection: 'horizontal',
+  locked: false,
+  activeMenu: 'leader',
+  songs: [],
+  currentIndex: 0,
+  songformLabels: ['A','B','C','D','bis','I','O'],
+  stickersBySong: {},
+  penColor: '#2B2730',
+  penSize: 3,
+  eraseMode: false,
+  cropTarget: null,
+  cropMode: 'auto',
+  cropAutoBox: null,
+  cropManualBox: null,
+};
+const PEN_COLORS = ['#2B2730', '#E0484B', '#3A7BD5', '#2FA84F', '#E8912D'];
+
+/* ---------- DOM 캐시 ---------- */
+const ID_LIST = ['lockBtn','lockClosedIcon','lockOpenIcon','songformBar','viewer','emptyState','emptyAddBtn',
+  'baseCanvas','stickerLayer','userCanvas','navUI','hotspotPrev','hotspotNext','navIndicator',
+  'leaderToolbar','addSongBtn','manageSongBtn','penToolbar','colorSwatches','sizeRange','eraseBtn','textMemoBtn',
+  'navLeaderBtn','navUserBtn','navSettingsBtn','fileInput',
+  'cropModal','cropAutoBtn','cropManualBtn','cropStage','cropDisplayImg','cropBox','cropCancelBtn','cropApplyBtn',
+  'settingsModal','themeLightBtn','themeDarkBtn','navHBtn','navVBtn','songformManageList','newLabelInput','addLabelBtn',
+  'driveConnectBtn','driveStatus','songManagerModal','songManagerList','songManagerAddBtn',
+  'textMemoModal','textMemoInput','textMemoAddBtn'];
+const els = {};
+function cacheEls(){ ID_LIST.forEach(id => els[id] = document.getElementById(id)); }
+
+function show(el, mode='flex'){ el.style.display = mode; }
+function hide(el){ el.style.display = 'none'; }
+function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function setActive(btn, active){
+  btn.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
+  btn.style.background = active ? 'var(--accent-soft)' : 'transparent';
+  btn.style.color = active ? 'var(--accent)' : 'var(--text)';
+  btn.style.fontWeight = active ? '700' : '500';
+}
+
+/* ---------- IndexedDB ---------- */
+const DB_NAME = 'continoteDB', DB_VERSION = 1;
+let dbPromise = null;
+function openDB(){
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('songs')) db.createObjectStore('songs', { keyPath:'id' });
+      if (!db.objectStoreNames.contains('notes')) db.createObjectStore('notes', { keyPath:'songId' });
+      if (!db.objectStoreNames.contains('stickers')) db.createObjectStore('stickers', { keyPath:'songId' });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return dbPromise;
+}
+async function idbPut(store, value){
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).put(value);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function idbGet(store, key){
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readonly').objectStore(store).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbGetAll(store){
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readonly').objectStore(store).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbDelete(store, key){
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/* ---------- 설정 (localStorage) ---------- */
+const LS_KEY = 'continote_settings_v1';
+function loadSettings(){
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e){}
+  return { theme:'light', navDirection:'horizontal', songformLabels:['A','B','C','D','bis','I','O'] };
+}
+function saveSettings(){
+  localStorage.setItem(LS_KEY, JSON.stringify({
+    theme: state.theme, navDirection: state.navDirection, songformLabels: state.songformLabels
+  }));
+}
+
+/* ---------- 곡 데이터 ---------- */
+async function loadSongsFromDB(){
+  const all = await idbGetAll('songs');
+  all.sort((a,b) => a.order - b.order);
+  state.songs = all;
+}
+async function saveSongs(){
+  state.songs.forEach((s,i) => s.order = i);
+  for (const s of state.songs) await idbPut('songs', s);
+}
+async function loadStickersForSong(songId){
+  const rec = await idbGet('stickers', songId);
+  state.stickersBySong[songId] = rec ? rec.items : [];
+}
+async function saveStickersForSong(songId){
+  await idbPut('stickers', { songId, items: state.stickersBySong[songId] || [] });
+}
+async function saveNoteSnapshot(songId){
+  const dataURL = els.userCanvas.toDataURL('image/png');
+  await idbPut('notes', { songId, dataURL });
+}
+
+/* ---------- 렌더링 ---------- */
+function resizeCanvases(){
+  const w = els.viewer.clientWidth, h = els.viewer.clientHeight;
+  const dpr = window.devicePixelRatio || 1;
+  [els.baseCanvas, els.userCanvas].forEach(c => {
+    c.width = w * dpr; c.height = h * dpr;
+    c.style.width = w + 'px'; c.style.height = h + 'px';
+    c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+  });
+}
+function clearCanvases(){
+  const w = els.viewer.clientWidth, h = els.viewer.clientHeight;
+  els.baseCanvas.getContext('2d').clearRect(0,0,w,h);
+  els.userCanvas.getContext('2d').clearRect(0,0,w,h);
+}
+function drawBaseImage(song){
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const w = els.viewer.clientWidth, h = els.viewer.clientHeight;
+      const ctx = els.baseCanvas.getContext('2d');
+      ctx.clearRect(0,0,w,h);
+      const scale = Math.min(w/img.width, h/img.height);
+      const dw = img.width*scale, dh = img.height*scale;
+      ctx.drawImage(img, (w-dw)/2, (h-dh)/2, dw, dh);
+      resolve();
+    };
+    img.src = song.image;
+  });
+}
+async function drawUserSnapshot(songId){
+  const w = els.viewer.clientWidth, h = els.viewer.clientHeight;
+  const ctx = els.userCanvas.getContext('2d');
+  ctx.clearRect(0,0,w,h);
+  if (!songId) return;
+  const rec = await idbGet('notes', songId);
+  if (!rec) return;
+  await new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => { ctx.drawImage(img,0,0,w,h); resolve(); };
+    img.src = rec.dataURL;
+  });
+}
+async function renderAll(){
+  resizeCanvases();
+  const song = state.songs[state.currentIndex];
+  if (song) {
+    await drawBaseImage(song);
+    await drawUserSnapshot(song.id);
+    if (!(song.id in state.stickersBySong)) await loadStickersForSong(song.id);
+    renderStickers(song.id);
+  } else {
+    clearCanvases();
+    renderStickers(null);
+  }
+  applyState();
+}
+
+/* ---------- 상태 -> UI 반영 ---------- */
+function applyState(){
+  document.documentElement.classList.toggle('dark', state.theme === 'dark');
+
+  show(els.lockClosedIcon, state.locked ? 'flex' : 'none');
+  show(els.lockOpenIcon, state.locked ? 'none' : 'flex');
+
+  const hasSongs = state.songs.length > 0;
+  show(els.emptyState, hasSongs ? 'none' : 'flex', );
+  els.emptyState.style.display = hasSongs ? 'none' : 'flex';
+  els.baseCanvas.style.visibility = hasSongs ? 'visible' : 'hidden';
+  els.userCanvas.style.visibility = hasSongs ? 'visible' : 'hidden';
+
+  const showLeaderTb = !state.locked && state.activeMenu === 'leader';
+  const showPenTb = !state.locked && state.activeMenu === 'user' && hasSongs;
+  const showSongformBar = !state.locked && state.activeMenu === 'leader' && hasSongs;
+  const showNavUI = state.locked && hasSongs && state.songs.length > 1;
+
+  els.leaderToolbar.style.display = showLeaderTb ? 'flex' : 'none';
+  els.penToolbar.style.display = showPenTb ? 'flex' : 'none';
+  els.songformBar.style.display = showSongformBar ? 'flex' : 'none';
+  els.navUI.style.display = showNavUI ? 'block' : 'none';
+
+  els.stickerLayer.classList.toggle('locked', state.locked);
+  els.userCanvas.style.pointerEvents = showPenTb ? 'auto' : 'none';
+
+  els.navLeaderBtn.querySelector('span').style.color = state.activeMenu === 'leader' ? 'var(--accent)' : 'var(--text-dim)';
+  els.navUserBtn.querySelector('span').style.color = state.activeMenu === 'user' ? 'var(--accent)' : 'var(--text-dim)';
+  els.navSettingsBtn.querySelector('span').style.color = 'var(--text-dim)';
+
+  els.eraseBtn.style.background = state.eraseMode ? 'var(--accent)' : 'transparent';
+  els.eraseBtn.style.color = state.eraseMode ? '#fff' : 'var(--text)';
+
+  updateNavDirectionUI();
+  updateNavIndicator();
+  renderColorSwatches();
+}
+function updateNavDirectionUI(){
+  const horizontal = state.navDirection === 'horizontal';
+  els.hotspotPrev.className = 'absolute ' + (horizontal ? 'left-0 top-0 bottom-0 w-1/5' : 'top-0 left-0 right-0 h-1/5');
+  els.hotspotNext.className = 'absolute ' + (horizontal ? 'right-0 top-0 bottom-0 w-1/5' : 'bottom-0 left-0 right-0 h-1/5');
+}
+function updateNavIndicator(){
+  els.navIndicator.textContent = state.songs.length ? `${state.currentIndex+1} / ${state.songs.length}` : '';
+}
+function renderColorSwatches(){
+  els.colorSwatches.innerHTML = '';
+  PEN_COLORS.forEach(color => {
+    const btn = document.createElement('button');
+    const selected = !state.eraseMode && state.penColor === color;
+    btn.className = 'shrink-0 w-7 h-7 rounded-full';
+    btn.style.background = color;
+    btn.style.boxShadow = selected ? '0 0 0 2px var(--surface), 0 0 0 4px var(--accent)' : '0 0 0 1px var(--border)';
+    btn.addEventListener('click', () => { state.penColor = color; state.eraseMode = false; applyState(); });
+    els.colorSwatches.appendChild(btn);
+  });
+}
+
+/* ---------- 곡 이동 ---------- */
+function goPrev(){ if (state.currentIndex > 0) { state.currentIndex--; loadCurrentSong(); } }
+function goNext(){ if (state.currentIndex < state.songs.length - 1) { state.currentIndex++; loadCurrentSong(); } }
+async function loadCurrentSong(){ await renderAll(); }
+
+/* ---------- 송폼 칩 바 ---------- */
+function renderSongformBar(){
+  els.songformBar.innerHTML = '';
+  state.songformLabels.forEach(label => {
+    const btn = document.createElement('button');
+    btn.className = `shrink-0 px-3.5 py-1.5 rounded-full border text-sm font-bold ${label === 'I' ? 'font-serif' : ''}`;
+    btn.style.borderColor = 'var(--accent)';
+    btn.style.color = 'var(--accent)';
+    btn.textContent = label;
+    btn.addEventListener('click', () => addSongformSticker(label));
+    els.songformBar.appendChild(btn);
+  });
+}
+function addSongformSticker(label){
+  const song = state.songs[state.currentIndex];
+  if (!song) return;
+  const list = state.stickersBySong[song.id] || (state.stickersBySong[song.id] = []);
+  list.push({ id: crypto.randomUUID(), type:'songform', label, x:50, y:50 });
+  saveStickersForSong(song.id);
+  renderStickers(song.id);
+}
+
+/* ---------- 스티커 ---------- */
+function renderStickers(songId){
+  els.stickerLayer.innerHTML = '';
+  if (!songId) return;
+  const items = state.stickersBySong[songId] || [];
+  items.forEach(item => els.stickerLayer.appendChild(createStickerEl(songId, item)));
+}
+function createStickerEl(songId, item){
+  const el = document.createElement('div');
+  const typeClass = item.type === 'text' ? 'text-memo' : 'songform';
+  const fontClass = item.label === 'I' ? 'font-serif font-bold' : 'font-bold';
+  el.className = `sticker ${typeClass} ${fontClass}`;
+  el.style.left = item.x + '%';
+  el.style.top = item.y + '%';
+  el.style.pointerEvents = 'auto';
+  el.textContent = item.label;
+  attachStickerEvents(el, songId, item);
+  return el;
+}
+function attachStickerEvents(el, songId, item){
+  let dragging = false, moved = false, longPressTimer = null, startX = 0, startY = 0;
+
+  el.addEventListener('pointerdown', (e) => {
+    if (state.locked) return;
+    e.stopPropagation();
+    el.setPointerCapture(e.pointerId);
+    startX = e.clientX; startY = e.clientY; moved = false;
+    longPressTimer = setTimeout(() => { if (!moved) showDeleteBadge(el, songId, item); }, 500);
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (state.locked) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (!moved && Math.hypot(dx, dy) > 6) {
+      moved = true; dragging = true;
+      clearTimeout(longPressTimer);
+      removeDeleteBadge(el);
+    }
+    if (dragging) {
+      const rect = els.stickerLayer.getBoundingClientRect();
+      let x = ((e.clientX - rect.left) / rect.width) * 100;
+      let y = ((e.clientY - rect.top) / rect.height) * 100;
+      x = Math.min(97, Math.max(3, x));
+      y = Math.min(97, Math.max(3, y));
+      item.x = x; item.y = y;
+      el.style.left = x + '%'; el.style.top = y + '%';
+    }
+  });
+  el.addEventListener('pointerup', () => {
+    clearTimeout(longPressTimer);
+    if (dragging) { dragging = false; saveStickersForSong(songId); }
+  });
+  el.addEventListener('pointercancel', () => { clearTimeout(longPressTimer); dragging = false; });
+}
+function showDeleteBadge(el, songId, item){
+  removeDeleteBadge(el);
+  const badge = document.createElement('span');
+  badge.className = 'del-badge';
+  badge.textContent = '×';
+  badge.addEventListener('pointerdown', (e) => e.stopPropagation());
+  badge.addEventListener('click', (e) => { e.stopPropagation(); deleteSticker(songId, item.id); });
+  el.appendChild(badge);
+  setTimeout(() => {
+    document.addEventListener('pointerdown', function clearOnce(ev){
+      if (!el.contains(ev.target)) { removeDeleteBadge(el); document.removeEventListener('pointerdown', clearOnce); }
+    });
+  }, 0);
+}
+function removeDeleteBadge(el){ const b = el.querySelector('.del-badge'); if (b) b.remove(); }
+function deleteSticker(songId, stickerId){
+  state.stickersBySong[songId] = (state.stickersBySong[songId] || []).filter(s => s.id !== stickerId);
+  saveStickersForSong(songId);
+  renderStickers(songId);
+}
+
+/* ---------- 펜 드로잉 ---------- */
+function setupDrawing(){
+  const canvas = els.userCanvas;
+  let drawing = false;
+  function getPos(e){ const r = canvas.getBoundingClientRect(); return { x:e.clientX-r.left, y:e.clientY-r.top }; }
+  canvas.addEventListener('pointerdown', (e) => {
+    if (state.locked || state.activeMenu !== 'user') return;
+    drawing = true;
+    canvas.setPointerCapture(e.pointerId);
+    const pos = getPos(e);
+    const ctx = canvas.getContext('2d');
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drawing) return;
+    const pos = getPos(e);
+    const ctx = canvas.getContext('2d');
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.globalCompositeOperation = state.eraseMode ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = state.penColor;
+    ctx.lineWidth = state.eraseMode ? state.penSize * 4 : state.penSize;
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+  });
+  function endStroke(e){
+    if (!drawing) return;
+    drawing = false;
+    try { canvas.releasePointerCapture(e.pointerId); } catch(_){}
+    const song = state.songs[state.currentIndex];
+    if (song) saveNoteSnapshot(song.id);
+  }
+  canvas.addEventListener('pointerup', endStroke);
+  canvas.addEventListener('pointercancel', endStroke);
+  canvas.addEventListener('pointerleave', endStroke);
+}
+
+/* ---------- 곡 넘김 (잠김=보기모드 전용) ---------- */
+function setupSwipe(){
+  let sx=0, sy=0, st=0, active=false;
+  els.viewer.addEventListener('pointerdown', (e) => {
+    if (!state.locked) return;
+    active = true; sx=e.clientX; sy=e.clientY; st=Date.now();
+  });
+  els.viewer.addEventListener('pointerup', (e) => {
+    if (!active) return;
+    active = false;
+    if (!state.locked) return;
+    const dx=e.clientX-sx, dy=e.clientY-sy, dt=Date.now()-st;
+    if (dt > 700) return;
+    if (state.navDirection === 'horizontal') {
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) (dx<0 ? goNext() : goPrev());
+    } else {
+      if (Math.abs(dy) > 50 && Math.abs(dy) > Math.abs(dx)) (dy<0 ? goNext() : goPrev());
+    }
+  });
+}
+
+/* ---------- Auto-Crop 감지 ---------- */
+function detectCropBox(img){
+  const maxDim = 600;
+  const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+  const dw = Math.max(1, Math.round(img.naturalWidth * scale));
+  const dh = Math.max(1, Math.round(img.naturalHeight * scale));
+  const c = document.createElement('canvas');
+  c.width = dw; c.height = dh;
+  const ctx = c.getContext('2d', { willReadFrequently:true });
+  ctx.drawImage(img, 0, 0, dw, dh);
+  const data = ctx.getImageData(0,0,dw,dh).data;
+  const bg = [data[0], data[1], data[2]];
+  const tol = 22;
+  function isBg(x,y){
+    const i=(y*dw+x)*4;
+    return Math.abs(data[i]-bg[0])<=tol && Math.abs(data[i+1]-bg[1])<=tol && Math.abs(data[i+2]-bg[2])<=tol;
+  }
+  function rowHasContent(y){ for(let x=0;x<dw;x+=2){ if(!isBg(x,y)) return true; } return false; }
+  function colHasContent(x){ for(let y=0;y<dh;y+=2){ if(!isBg(x,y)) return true; } return false; }
+  let top=0; while(top<dh && !rowHasContent(top)) top++;
+  let bottom=dh-1; while(bottom>top && !rowHasContent(bottom)) bottom--;
+  let left=0; while(left<dw && !colHasContent(left)) left++;
+  let right=dw-1; while(right>left && !colHasContent(right)) right--;
+  if (top>=bottom || left>=right) return { x:0, y:0, w:img.naturalWidth, h:img.naturalHeight };
+  const pad = 8;
+  top=Math.max(0,top-pad); left=Math.max(0,left-pad);
+  bottom=Math.min(dh-1,bottom+pad); right=Math.min(dw-1,right+pad);
+  const inv = 1/scale;
+  return {
+    x: Math.round(left*inv), y: Math.round(top*inv),
+    w: Math.round((right-left)*inv), h: Math.round((bottom-top)*inv)
+  };
+}
+function renderCropToDataURL(img, box){
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(box.w));
+  c.height = Math.max(1, Math.round(box.h));
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, box.x, box.y, box.w, box.h, 0, 0, c.width, c.height);
+  return c.toDataURL('image/png');
+}
+
+/* ---------- Crop 모달 흐름 ---------- */
+function openCropModal(file){
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      state.cropTarget = { img, naturalW: img.naturalWidth, naturalH: img.naturalHeight, songId: null };
+      startCropFlow();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function openCropModalForEdit(song){
+  const img = new Image();
+  img.onload = () => {
+    state.cropTarget = { img, naturalW: img.naturalWidth, naturalH: img.naturalHeight, songId: song.id };
+    startCropFlow();
+  };
+  img.src = song.original;
+}
+function startCropFlow(){
+  const { img } = state.cropTarget;
+  const auto = detectCropBox(img);
+  state.cropAutoBox = auto;
+  state.cropManualBox = { x1:auto.x, y1:auto.y, x2:auto.x+auto.w, y2:auto.y+auto.h };
+  state.cropMode = 'auto';
+  syncCropModeButtons();
+  hide(els.cropBox);
+  els.cropDisplayImg.onload = null;
+  els.cropDisplayImg.src = renderCropToDataURL(img, auto);
+  show(els.cropModal);
+}
+function syncCropModeButtons(){
+  setActive(els.cropAutoBtn, state.cropMode === 'auto');
+  setActive(els.cropManualBtn, state.cropMode === 'manual');
+}
+function positionCropBoxFromState(){
+  const scale = els.cropDisplayImg.clientWidth / state.cropTarget.naturalW;
+  const b = state.cropManualBox;
+  els.cropBox.style.left = (b.x1*scale) + 'px';
+  els.cropBox.style.top = (b.y1*scale) + 'px';
+  els.cropBox.style.width = ((b.x2-b.x1)*scale) + 'px';
+  els.cropBox.style.height = ((b.y2-b.y1)*scale) + 'px';
+}
+
+/* ---------- 곡 관리 ---------- */
+function renderSongManagerList(){
+  els.songManagerList.innerHTML = '';
+  state.songs.forEach((song, i) => {
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-2 p-2 rounded-xl';
+    row.style.background = 'var(--surface-2)';
+    row.innerHTML = `
+      <img src="${song.image}" class="w-12 h-12 object-cover rounded-lg border" style="border-color:var(--border)" />
+      <span class="flex-1 min-w-0 text-sm font-medium truncate song-name" contenteditable="true">${escapeHtml(song.name)}</span>
+      <button data-action="up" class="p-1.5 w-7 h-7">${ICON.up}</button>
+      <button data-action="down" class="p-1.5 w-7 h-7">${ICON.down}</button>
+      <button data-action="recrop" class="p-1.5 w-7 h-7">${ICON.edit}</button>
+      <button data-action="delete" class="p-1.5 w-7 h-7" style="color:#E0484B">${ICON.trash}</button>
+    `;
+    row.querySelector('.song-name').addEventListener('blur', (e) => {
+      song.name = e.target.textContent.trim() || song.name;
+      saveSongs();
+    });
+    row.querySelector('[data-action="up"]').addEventListener('click', () => moveSong(i, -1));
+    row.querySelector('[data-action="down"]').addEventListener('click', () => moveSong(i, 1));
+    row.querySelector('[data-action="recrop"]').addEventListener('click', () => { hide(els.songManagerModal); openCropModalForEdit(song); });
+    row.querySelector('[data-action="delete"]').addEventListener('click', () => deleteSong(song.id));
+    els.songManagerList.appendChild(row);
+  });
+}
+async function moveSong(index, dir){
+  const newIndex = index + dir;
+  if (newIndex < 0 || newIndex >= state.songs.length) return;
+  const curId = state.songs[state.currentIndex]?.id;
+  const [item] = state.songs.splice(index, 1);
+  state.songs.splice(newIndex, 0, item);
+  await saveSongs();
+  if (curId) state.currentIndex = state.songs.findIndex(s => s.id === curId);
+  renderSongManagerList();
+  await renderAll();
+}
+async function deleteSong(id){
+  const idx = state.songs.findIndex(s => s.id === id);
+  if (idx === -1) return;
+  if (!confirm('이 악보를 삭제할까요?')) return;
+  state.songs.splice(idx, 1);
+  delete state.stickersBySong[id];
+  await saveSongs();
+  await idbDelete('songs', id);
+  await idbDelete('notes', id);
+  await idbDelete('stickers', id);
+  if (state.currentIndex >= state.songs.length) state.currentIndex = Math.max(0, state.songs.length - 1);
+  renderSongManagerList();
+  await renderAll();
+}
+
+/* ---------- Google Drive / GIS Mock 연동 구조 ---------- */
+const GOOGLE_CLIENT_ID = ''; // TODO: GIS OAuth Client ID 입력
+const GOOGLE_API_KEY = '';   // TODO: Google Cloud API Key 입력
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+let gisTokenClient = null;
+let gDriveAccessToken = null;
+
+function initGoogleDrive(){
+  if (!GOOGLE_CLIENT_ID || typeof google === 'undefined') return;
+  gisTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: DRIVE_SCOPE,
+    callback: (resp) => {
+      if (resp.error) { console.error(resp); return; }
+      gDriveAccessToken = resp.access_token;
+      els.driveStatus.textContent = '연동됨';
+    },
+  });
+}
+function connectGoogleDrive(){
+  if (!GOOGLE_CLIENT_ID || !gisTokenClient) {
+    alert('Google Drive 연동을 사용하려면 코드 상단의 GOOGLE_CLIENT_ID / GOOGLE_API_KEY를 먼저 설정해주세요.');
+    return;
+  }
+  gisTokenClient.requestAccessToken();
+}
+async function driveListFiles(){
+  if (!gDriveAccessToken) return [];
+  const res = await fetch('https://www.googleapis.com/drive/v3/files?pageSize=20&fields=files(id,name,mimeType)', {
+    headers: { Authorization: `Bearer ${gDriveAccessToken}` }
+  });
+  return res.ok ? (await res.json()).files : [];
+}
+async function driveUploadFile(name, blob){
+  if (!gDriveAccessToken) return null;
+  const metadata = { name, mimeType: blob.type };
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type:'application/json' }));
+  form.append('file', blob);
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method:'POST',
+    headers:{ Authorization:`Bearer ${gDriveAccessToken}` },
+    body: form
+  });
+  return res.ok ? await res.json() : null;
+}
+
+/* ---------- 설정 모달 ---------- */
+function renderSongformManageList(){
+  els.songformManageList.innerHTML = '';
+  state.songformLabels.forEach((label, i) => {
+    const chip = document.createElement('span');
+    chip.className = `inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm border ${label==='I' ? 'font-serif font-bold':'font-medium'}`;
+    chip.style.borderColor = 'var(--border)';
+    chip.innerHTML = `<span>${escapeHtml(label)}</span><button data-i="${i}" class="w-3.5 h-3.5 opacity-60">${ICON.trash}</button>`;
+    els.songformManageList.appendChild(chip);
+  });
+}
+function updateSettingsButtons(){
+  setActive(els.themeLightBtn, state.theme === 'light');
+  setActive(els.themeDarkBtn, state.theme === 'dark');
+  setActive(els.navHBtn, state.navDirection === 'horizontal');
+  setActive(els.navVBtn, state.navDirection === 'vertical');
+}
+
+/* ---------- 이벤트 바인딩 ---------- */
+function wireEvents(){
+  els.fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) openCropModal(file);
+    e.target.value = '';
+  });
+  els.addSongBtn.addEventListener('click', () => els.fileInput.click());
+  els.emptyAddBtn.addEventListener('click', () => els.fileInput.click());
+  els.songManagerAddBtn.addEventListener('click', () => { hide(els.songManagerModal); els.fileInput.click(); });
+
+  els.lockBtn.addEventListener('click', () => { state.locked = !state.locked; applyState(); });
+  els.navLeaderBtn.addEventListener('click', () => { state.activeMenu = 'leader'; applyState(); });
+  els.navUserBtn.addEventListener('click', () => { state.activeMenu = 'user'; applyState(); });
+  els.navSettingsBtn.addEventListener('click', () => { renderSongformManageList(); updateSettingsButtons(); show(els.settingsModal); });
+
+  els.manageSongBtn.addEventListener('click', () => { renderSongManagerList(); show(els.songManagerModal); });
+
+  els.hotspotPrev.addEventListener('click', goPrev);
+  els.hotspotNext.addEventListener('click', goNext);
+
+  els.eraseBtn.addEventListener('click', () => { state.eraseMode = !state.eraseMode; applyState(); });
+  els.sizeRange.addEventListener('input', (e) => { state.penSize = Number(e.target.value); });
+  els.textMemoBtn.addEventListener('click', () => { els.textMemoInput.value = ''; show(els.textMemoModal); });
+  els.textMemoAddBtn.addEventListener('click', () => {
+    const text = els.textMemoInput.value.trim();
+    if (!text) return;
+    const song = state.songs[state.currentIndex];
+    if (!song) return;
+    const list = state.stickersBySong[song.id] || (state.stickersBySong[song.id] = []);
+    list.push({ id: crypto.randomUUID(), type:'text', label:text, x:50, y:50 });
+    saveStickersForSong(song.id);
+    renderStickers(song.id);
+    hide(els.textMemoModal);
+  });
+
+  document.querySelectorAll('[data-close-settings]').forEach(el => el.addEventListener('click', () => hide(els.settingsModal)));
+  document.querySelectorAll('[data-close-song-manager]').forEach(el => el.addEventListener('click', () => hide(els.songManagerModal)));
+  document.querySelectorAll('[data-close-textmemo]').forEach(el => el.addEventListener('click', () => hide(els.textMemoModal)));
+
+  els.themeLightBtn.addEventListener('click', () => { state.theme='light'; saveSettings(); applyState(); updateSettingsButtons(); });
+  els.themeDarkBtn.addEventListener('click', () => { state.theme='dark'; saveSettings(); applyState(); updateSettingsButtons(); });
+  els.navHBtn.addEventListener('click', () => { state.navDirection='horizontal'; saveSettings(); applyState(); updateSettingsButtons(); });
+  els.navVBtn.addEventListener('click', () => { state.navDirection='vertical'; saveSettings(); applyState(); updateSettingsButtons(); });
+
+  els.addLabelBtn.addEventListener('click', () => {
+    const v = els.newLabelInput.value.trim();
+    if (!v || state.songformLabels.includes(v)) { els.newLabelInput.value=''; return; }
+    state.songformLabels.push(v);
+    saveSettings();
+    renderSongformManageList();
+    renderSongformBar();
+    els.newLabelInput.value = '';
+  });
+  els.songformManageList.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-i]');
+    if (!btn) return;
+    state.songformLabels.splice(Number(btn.dataset.i), 1);
+    saveSettings();
+    renderSongformManageList();
+    renderSongformBar();
+  });
+  els.driveConnectBtn.addEventListener('click', connectGoogleDrive);
+
+  els.cropAutoBtn.addEventListener('click', () => {
+    state.cropMode = 'auto';
+    syncCropModeButtons();
+    hide(els.cropBox);
+    els.cropDisplayImg.onload = null;
+    els.cropDisplayImg.src = renderCropToDataURL(state.cropTarget.img, state.cropAutoBox);
+  });
+  els.cropManualBtn.addEventListener('click', () => {
+    state.cropMode = 'manual';
+    syncCropModeButtons();
+    els.cropDisplayImg.onload = () => { positionCropBoxFromState(); show(els.cropBox, 'block'); };
+    els.cropDisplayImg.src = state.cropTarget.img.src;
+  });
+  els.cropCancelBtn.addEventListener('click', () => { hide(els.cropModal); state.cropTarget = null; });
+  els.cropApplyBtn.addEventListener('click', async () => {
+    const { img, songId } = state.cropTarget;
+    let box;
+    if (state.cropMode === 'auto') {
+      box = state.cropAutoBox;
+    } else {
+      const b = state.cropManualBox;
+      box = { x:b.x1, y:b.y1, w:Math.max(1,b.x2-b.x1), h:Math.max(1,b.y2-b.y1) };
+    }
+    const dataURL = renderCropToDataURL(img, box);
+    if (songId) {
+      const song = state.songs.find(s => s.id === songId);
+      song.image = dataURL;
+    } else {
+      state.songs.push({ id: crypto.randomUUID(), name:`악보 ${state.songs.length+1}`, image: dataURL, original: img.src, order: state.songs.length });
+      state.currentIndex = state.songs.length - 1;
+    }
+    await saveSongs();
+    hide(els.cropModal);
+    state.cropTarget = null;
+    await renderAll();
+  });
+  els.cropBox.querySelectorAll('.crop-handle').forEach(handle => {
+    handle.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+      const corner = handle.dataset.corner;
+      const onMove = (ev) => {
+        const stageRect = els.cropStage.getBoundingClientRect();
+        const scale = els.cropDisplayImg.clientWidth / state.cropTarget.naturalW;
+        let nx = (ev.clientX - stageRect.left) / scale;
+        let ny = (ev.clientY - stageRect.top) / scale;
+        nx = Math.min(Math.max(nx, 0), state.cropTarget.naturalW);
+        ny = Math.min(Math.max(ny, 0), state.cropTarget.naturalH);
+        const b = state.cropManualBox;
+        const minSize = 20 / scale;
+        if (corner === 'tl') { b.x1 = Math.min(nx, b.x2 - minSize); b.y1 = Math.min(ny, b.y2 - minSize); }
+        if (corner === 'tr') { b.x2 = Math.max(nx, b.x1 + minSize); b.y1 = Math.min(ny, b.y2 - minSize); }
+        if (corner === 'bl') { b.x1 = Math.min(nx, b.x2 - minSize); b.y2 = Math.max(ny, b.y1 + minSize); }
+        if (corner === 'br') { b.x2 = Math.max(nx, b.x1 + minSize); b.y2 = Math.max(ny, b.y1 + minSize); }
+        positionCropBoxFromState();
+      };
+      const onUp = () => {
+        try { handle.releasePointerCapture(e.pointerId); } catch(_){}
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+      };
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+    });
+  });
+
+  setupDrawing();
+  setupSwipe();
+  window.addEventListener('resize', debounce(renderAll, 200));
+}
+
+/* ---------- 초기화 ---------- */
+document.addEventListener('DOMContentLoaded', async () => {
+  cacheEls();
+  const saved = loadSettings();
+  state.theme = saved.theme;
+  state.navDirection = saved.navDirection;
+  state.songformLabels = saved.songformLabels;
+
+  await loadSongsFromDB();
+  if (state.songs[0]) await loadStickersForSong(state.songs[0].id);
+
+  wireEvents();
+  renderSongformBar();
+  await renderAll();
+  initGoogleDrive();
+});
+</script>
+</body>
+</html>
