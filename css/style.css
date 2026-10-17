@@ -78,14 +78,27 @@ html.dark body[data-color-mode="user"] {
   --header-border: rgba(157, 78, 221, 0.25);
 }
 
-/* 환경설정 모달은 현재 메뉴와 무관하게 ContiNote 대표 브랜드 컬러(Purple)로 일관되게 고정 */
-#settingsModal {
-  --accent: #6B5B95 !important;
-  --accent-soft: rgba(107, 91, 149, 0.15) !important;
+body[data-color-mode="settings"] {
+  --accent: #6B5B95;
+  --accent-soft: rgba(107, 91, 149, 0.15);
+  --header-bg: rgba(249, 246, 252, 0.92);
+  --header-border: rgba(107, 91, 149, 0.2);
 }
-html.dark #settingsModal {
-  --accent: #9D4EDD !important;
-  --accent-soft: rgba(157, 78, 221, 0.2) !important;
+html.dark body[data-color-mode="settings"] {
+  --accent: #9D4EDD;
+  --accent-soft: rgba(157, 78, 221, 0.2);
+  --header-bg: rgba(28, 22, 38, 0.94);
+  --header-border: rgba(157, 78, 221, 0.25);
+}
+
+/* 환경설정 페이지는 ContiNote 대표 브랜드 컬러(Purple)로 고정 */
+#settingsView {
+  --accent: #6B5B95;
+  --accent-soft: rgba(107, 91, 149, 0.15);
+}
+html.dark #settingsView {
+  --accent: #9D4EDD;
+  --accent-soft: rgba(157, 78, 221, 0.2);
 }
 
 header {

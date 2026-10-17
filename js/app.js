@@ -47,7 +47,7 @@ const DOM_IDS = [
   'songLibraryView', 'libraryUploadBtn', 'librarySearchInput', 'libraryThemeFilterBar',
   'librarySongListContainer', 'libraryEmptyState',
   // 5. [3단계] 악보 뷰어 섹션
-  'viewerSection', 'songformStickyBar', 'songformChipsList', 'songformFlowDisplayArea',
+  'viewerSection', 'songformStickyBar', 'stickerBarRow', 'songformChipsList', 'flowBarRow', 'songformFlowDisplayArea',
   'viewer', 'emptyState',
   'stageContainer', 'sheetContainer', 'zoomControls', 'zoomInBtn', 'zoomOutBtn', 'zoomResetBtn', 'zoomLevelText',
   'baseCanvas', 'stickerLayer', 'userCanvas',
@@ -61,7 +61,7 @@ const DOM_IDS = [
   'ratioModal', 'ratioResetBtn', 'ratioStage', 'ratioCanvas', 'ratioWidthVal', 'ratioHeightVal', 'ratioAspectVal', 'ratioPrevBtn', 'ratioNextBtn',
   'songformOrderModal', 'songformOrderSongTitle', 'songformStepInput', 'songformMultiplyBtn', 'songformStepNextBtn', 'songformPickerChips', 'songformClearFlowBtn', 'songformFlowList', 'songformFlowEmptyHint', 'songformOrderApplyBtn',
   'contiModal', 'contiModalTitle', 'contiTitleInput', 'contiDateInput', 'contiMemoInput', 'contiSaveBtn',
-  'settingsModal', 'themeSystemBtn', 'themeLightBtn', 'themeDarkBtn', 'navHBtn', 'navVBtn', 'songformManageList', 'newLabelInput', 'addLabelBtn', 'driveConnectBtn', 'driveStatusText',
+  'settingsView', 'themeSystemBtn', 'themeLightBtn', 'themeDarkBtn', 'navHBtn', 'navVBtn', 'songformManageList', 'newLabelInput', 'addLabelBtn', 'driveConnectBtn', 'driveStatusText',
   'themeManageList', 'newThemeInput', 'addThemeBtn',
   'textMemoModal', 'textMemoInput', 'textMemoAddBtn',
   'shareModal', 'shareContiTitle', 'shareEmailInput', 'addShareEmailBtn', 'shareEmailList', 'copyShareLinkBtn',
@@ -82,6 +82,25 @@ function debounce(fn, ms) {
 }
 function escapeHtml(str) {
   return String(str || '').replace(/[&<>"']/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[s]));
+}
+function formatStepTextHtml(step) {
+  const escaped = escapeHtml(step);
+  if (escaped.includes('×')) {
+    return escaped.replace(/×/g, '<span class="text-[10px] sm:text-xs opacity-75 font-semibold mx-[0.5px]">×</span>');
+  }
+  return escaped;
+}
+function renderSongformChipsHtml(songform) {
+  if (!Array.isArray(songform) || !songform.length) return '';
+  return songform.map((step, idx) => {
+    const isI = (step === 'I' || step.startsWith('I×') || step.startsWith('I '));
+    const stepContent = formatStepTextHtml(step);
+    const chip = `<span class="inline-flex items-center px-1 py-[1px] rounded-[3px] text-xs sm:text-sm font-bold shrink-0 leading-none ${isI ? 'part-serif-i' : ''}" style="background:var(--accent-soft);color:var(--accent)">${stepContent}</span>`;
+    const arrow = (idx < songform.length - 1)
+      ? `<span class="text-[8px] sm:text-[10px] font-bold opacity-35 shrink-0 select-none mx-[1px]">&gt;</span>`
+      : '';
+    return chip + arrow;
+  }).join('');
 }
 function setButtonActive(el, active) {
   if (!el) return;
@@ -528,10 +547,8 @@ export function renderSongListView() {
               </div>
             ` : ''}
             ${song.songform && song.songform.length ? `
-              <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                <span class="text-xs px-2 py-0.5 rounded-full font-bold truncate whitespace-nowrap" style="background:var(--accent-soft);color:var(--accent)">
-                  ${song.songform.join(' > ')}
-                </span>
+              <div class="flex items-center overflow-x-auto no-scrollbar max-w-full py-0.5 select-none" title="${escapeHtml(song.songform.join(' > '))}">
+                ${renderSongformChipsHtml(song.songform)}
               </div>` : ''}
           </div>
         </div>
@@ -605,10 +622,8 @@ export function renderSongListView() {
             ${song.tempo ? `<span class="text-xs sm:text-sm font-semibold text-neutral-500 shrink-0">♩${escapeHtml(song.tempo)}</span>` : ''}
           </div>
           ${song.songform && song.songform.length ? `
-            <div class="flex items-center gap-1.5 mt-1 overflow-x-auto no-scrollbar">
-              <span class="text-xs px-2 py-0.5 rounded-full font-bold truncate whitespace-nowrap" style="background:var(--accent-soft);color:var(--accent)">
-                ${song.songform.join(' > ')}
-              </span>
+            <div class="flex items-center overflow-x-auto no-scrollbar max-w-full py-0.5 mt-1 select-none" title="${escapeHtml(song.songform.join(' > '))}">
+              ${renderSongformChipsHtml(song.songform)}
             </div>` : ''}
         </div>
         <span class="font-bold text-xs shrink-0 flex items-center gap-1" style="color:var(--accent)">
@@ -739,12 +754,10 @@ export function renderSongLibraryView() {
             ${song.tempo ? `<span class="text-[11px] sm:text-xs font-semibold text-neutral-500 shrink-0">♩${escapeHtml(song.tempo)}</span>` : ''}
             ${themeBadges}
           </div>
-          <!-- 3번째 줄: 송폼 진행 순서 (있을 경우 단독 표시) -->
+          <!-- 3번째 줄: 송폼 진행 순서 (A{칩} > A×2{칩} > 형태) -->
           ${hasSongform ? `
-            <div class="mt-1.5 flex items-center min-w-0">
-              <span class="text-xs px-2 py-0.5 rounded-full font-bold truncate max-w-full" style="background:var(--accent-soft);color:var(--accent)" title="${song.songform.join(' > ')}">
-                ${song.songform.join(' > ')}
-              </span>
+            <div class="mt-1.5 flex items-center overflow-x-auto no-scrollbar max-w-full py-0.5 select-none" title="${escapeHtml(song.songform.join(' > '))}">
+              ${renderSongformChipsHtml(song.songform)}
             </div>` : ''}
         </div>
       </div>
@@ -913,6 +926,13 @@ const menuSessions = {
     currentIndex: 0,
     locked: true,
     viewerReturnView: null,
+  },
+  settings: {
+    viewLevel: 'settings',
+    currentContiId: null,
+    currentIndex: 0,
+    locked: true,
+    viewerReturnView: null,
   }
 };
 
@@ -949,7 +969,7 @@ export async function switchToMenu(targetMenu) {
     state.locked = session.locked;
     state.viewerReturnView = session.viewerReturnView;
   } else {
-    state.viewLevel = (targetMenu === 'library') ? 'songLibrary' : 'contiList';
+    state.viewLevel = (targetMenu === 'library') ? 'songLibrary' : (targetMenu === 'settings' ? 'settings' : 'contiList');
     state.currentContiId = null;
     state.currentIndex = 0;
     state.locked = true;
@@ -969,6 +989,8 @@ export async function switchToMenu(targetMenu) {
     renderSongListView();
   } else if (state.viewLevel === 'songLibrary') {
     renderSongLibraryView();
+  } else if (state.viewLevel === 'settings') {
+    renderSettingsView();
   } else if (state.viewLevel === 'viewer') {
     await renderAll();
   }
@@ -982,12 +1004,14 @@ export async function switchToMenu(targetMenu) {
 export function applyUIState() {
   document.documentElement.classList.toggle('dark', isDarkThemeActive());
 
-  // 테마 컬러 모드 설정 (사용자 메뉴: 보라 / 인도자 메뉴: 주황 / 곡 목록 메뉴: 파랑)
+  // 테마 컬러 모드 설정 (사용자: 보라 / 인도자: 주황 / 곡 목록: 파랑 / 설정: 보라)
   let colorMode = 'user';
   if (state.activeMenu === 'leader') {
     colorMode = 'leader';
   } else if (state.activeMenu === 'library') {
     colorMode = 'library';
+  } else if (state.activeMenu === 'settings') {
+    colorMode = 'settings';
   } else {
     colorMode = 'user';
   }
@@ -997,6 +1021,7 @@ export function applyUIState() {
   if (themeMeta) {
     if (colorMode === 'leader') themeMeta.content = '#EA580C';
     else if (colorMode === 'library') themeMeta.content = '#2563EB';
+    else if (colorMode === 'settings') themeMeta.content = '#6B5B95';
     else themeMeta.content = '#6B5B95';
   }
 
@@ -1010,6 +1035,7 @@ export function applyUIState() {
     show(els.contiListView, 'block');
     hide(els.songListView);
     hide(els.songLibraryView);
+    hide(els.settingsView);
     hide(els.viewerSection);
 
     hide(els.backBtn);
@@ -1018,6 +1044,7 @@ export function applyUIState() {
     hide(els.songListAddBtn);
     show(els.addLibrarySongBtn, 'flex');
     hide(els.lockBtn);
+    hide(els.navIndicator);
 
     if (isLeader) {
       show(els.addContiBtn, 'flex');
@@ -1037,6 +1064,7 @@ export function applyUIState() {
     hide(els.contiListView);
     show(els.songListView, 'block');
     hide(els.songLibraryView);
+    hide(els.settingsView);
     hide(els.viewerSection);
 
     show(els.backBtn, 'flex');
@@ -1058,6 +1086,7 @@ export function applyUIState() {
     }
     show(els.addLibrarySongBtn, 'flex');
     hide(els.lockBtn);
+    hide(els.navIndicator);
 
     hide(els.leaderToolbar);
     hide(els.userPenToolbar);
@@ -1071,6 +1100,7 @@ export function applyUIState() {
     hide(els.contiListView);
     hide(els.songListView);
     show(els.songLibraryView, 'block');
+    hide(els.settingsView);
     hide(els.viewerSection);
 
     hide(els.backBtn);
@@ -1080,6 +1110,7 @@ export function applyUIState() {
     hide(els.songListAddBtn);
     show(els.addLibrarySongBtn, 'flex');
     hide(els.lockBtn);
+    hide(els.navIndicator);
 
     hide(els.leaderToolbar);
     hide(els.userPenToolbar);
@@ -1088,10 +1119,35 @@ export function applyUIState() {
     return;
   }
 
-  // 4. [3단계: 악보 뷰어]
+  // 4. [환경 설정 화면]
+  if (state.viewLevel === 'settings') {
+    hide(els.contiListView);
+    hide(els.songListView);
+    hide(els.songLibraryView);
+    hide(els.viewerSection);
+    show(els.settingsView, 'block');
+
+    hide(els.backBtn);
+    show(els.headerLogoArea, 'flex');
+    hide(els.viewerHeaderInfo);
+    hide(els.addContiBtn);
+    hide(els.songListAddBtn);
+    hide(els.addLibrarySongBtn);
+    hide(els.lockBtn);
+    hide(els.navIndicator);
+
+    hide(els.leaderToolbar);
+    hide(els.userPenToolbar);
+    updateZoomVisibility(true);
+    updateBottomNavActiveState();
+    return;
+  }
+
+  // 5. [3단계: 악보 뷰어]
   hide(els.contiListView);
   hide(els.songListView);
   hide(els.songLibraryView);
+  hide(els.settingsView);
   show(els.viewerSection, 'flex');
 
   show(els.backBtn, 'flex');
@@ -1116,6 +1172,11 @@ export function applyUIState() {
   hide(els.addContiBtn);
   hide(els.songListAddBtn);
   hide(els.addLibrarySongBtn);
+  if (hasSongs) {
+    show(els.navIndicator, 'inline-flex');
+  } else {
+    hide(els.navIndicator);
+  }
   show(els.lockBtn, 'flex');
 
   els.emptyState.style.display = hasSongs ? 'none' : 'flex';
@@ -1126,23 +1187,35 @@ export function applyUIState() {
     show(els.lockClosedIcon, 'flex');
     hide(els.lockOpenIcon);
     els.lockBtn.className = 'w-8 h-8 sm:w-[34px] sm:h-[34px] flex items-center justify-center rounded-xl border active:scale-95 transition-all shrink-0 lock-view-mode';
+    els.lockBtn.title = '보기 모드 (잠김 - 클릭하여 편집 모드로 전환)';
   } else {
     hide(els.lockClosedIcon);
     show(els.lockOpenIcon, 'flex');
     els.lockBtn.className = 'w-8 h-8 sm:w-[34px] sm:h-[34px] flex items-center justify-center rounded-xl border active:scale-95 transition-all shrink-0 lock-edit-mode';
+    els.lockBtn.title = '편집 모드 (열림 - 클릭하여 보기 모드로 전환)';
   }
 
   const hasSongform = currentSong && currentSong.songform && currentSong.songform.length > 0;
-  const showStickyBar = (!state.locked && isLeader) || hasSongform;
-  els.songformStickyBar.style.display = (hasSongs && showStickyBar) ? 'flex' : 'none';
+  const isEditingLeader = !state.locked && isLeader;
+  const showStickyBar = hasSongs && (isEditingLeader || hasSongform);
+  els.songformStickyBar.style.display = showStickyBar ? 'flex' : 'none';
 
-  const showStickerChips = !state.locked && isLeader;
-  els.songformChipsList.style.display = showStickerChips ? 'flex' : 'none';
+  // [상단 1행] 인도자 전용 스티커 부착 바
+  if (els.stickerBarRow) {
+    els.stickerBarRow.style.display = isEditingLeader ? 'flex' : 'none';
+  }
+  els.songformChipsList.style.display = isEditingLeader ? 'flex' : 'none';
   if (els.stickerSizeControls) {
-    els.stickerSizeControls.style.display = showStickerChips ? 'flex' : 'none';
+    els.stickerSizeControls.style.display = isEditingLeader ? 'flex' : 'none';
     if (els.stickerSizeLabel) {
       els.stickerSizeLabel.textContent = `${Math.round((state.stickerScale || 1.0) * 100)}%`;
     }
+  }
+
+  // [하단 2행] 송폼 진행 순서 바 (편집 화면에서는 스티커 바 아래로 분리 표시)
+  if (els.flowBarRow) {
+    const showFlow = hasSongform || isEditingLeader;
+    els.flowBarRow.style.display = showFlow ? 'flex' : 'none';
   }
 
   const showLeaderToolbar = !state.locked && isLeader;
@@ -1200,7 +1273,9 @@ function updateBottomNavActiveState() {
   els.navSongLibraryBtn.classList.toggle('active', libraryActive);
   els.navSongLibraryBtn.style.color = libraryActive ? 'var(--accent)' : 'var(--text-dim)';
 
-  els.navSettingsBtn.style.color = 'var(--text-dim)';
+  const settingsActive = state.activeMenu === 'settings';
+  els.navSettingsBtn.classList.toggle('active', settingsActive);
+  els.navSettingsBtn.style.color = settingsActive ? 'var(--accent)' : 'var(--text-dim)';
 }
 
 function updateHotspotPositions() {
@@ -1215,10 +1290,14 @@ function updateHotspotPositions() {
 }
 
 function updateNavIndicator() {
-  if (state.songs.length > 0) {
-    els.navIndicator.textContent = `${state.currentIndex + 1} / ${state.songs.length} 곡`;
-  } else {
-    els.navIndicator.textContent = '';
+  if (els.navIndicator) {
+    if (state.songs.length > 0 && state.viewLevel === 'viewer') {
+      els.navIndicator.textContent = `${state.currentIndex + 1} / ${state.songs.length} 곡`;
+      show(els.navIndicator, 'inline-flex');
+    } else {
+      els.navIndicator.textContent = '';
+      hide(els.navIndicator);
+    }
   }
 }
 
@@ -1281,23 +1360,25 @@ function renderSongformStickyChips() {
 
   els.songformFlowDisplayArea.innerHTML = '';
   const song = state.songs[state.currentIndex];
-  if (song && song.songform && song.songform.length > 0) {
-    const isLeader = state.activeMenu === 'leader';
+  const isLeader = state.activeMenu === 'leader';
+  const hasSongform = song && song.songform && song.songform.length > 0;
+
+  if (hasSongform) {
     const flowWrap = document.createElement('div');
-    flowWrap.className = 'flex items-center gap-1 flex-nowrap shrink-0 overflow-x-auto no-scrollbar py-0.5';
+    flowWrap.className = 'flex items-center gap-[1px] flex-nowrap shrink-0 overflow-x-auto no-scrollbar py-0.5';
 
     song.songform.forEach((step, idx) => {
-      const isI = (step === 'I');
+      const isI = (step === 'I' || step.startsWith('I×') || step.startsWith('I '));
       const stepChip = document.createElement('span');
-      stepChip.className = `inline-flex items-center px-1 py-0.5 rounded text-sm font-bold shadow-sm shrink-0 leading-none ${isI ? 'part-serif-i' : ''}`;
+      stepChip.className = `inline-flex items-center px-1 py-[1px] rounded-[3px] text-sm sm:text-lg font-bold shadow-sm shrink-0 leading-none ${isI ? 'part-serif-i' : ''}`;
       stepChip.style.backgroundColor = 'var(--accent-soft)';
       stepChip.style.color = 'var(--accent)';
-      stepChip.textContent = step;
+      stepChip.innerHTML = formatStepTextHtml(step);
       flowWrap.appendChild(stepChip);
 
       if (idx < song.songform.length - 1) {
         const arrow = document.createElement('span');
-        arrow.className = 'text-xs font-bold opacity-30 shrink-0';
+        arrow.className = 'text-[9px] sm:text-[11px] font-bold opacity-30 shrink-0 mx-[0.5px] select-none';
         arrow.textContent = '>';
         flowWrap.appendChild(arrow);
       }
@@ -1310,6 +1391,15 @@ function renderSongformStickyChips() {
     }
 
     els.songformFlowDisplayArea.appendChild(flowWrap);
+  } else if (isLeader && !state.locked) {
+    const emptyBtn = document.createElement('button');
+    emptyBtn.className = 'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg border border-dashed text-xs font-semibold active:scale-95 transition-all';
+    emptyBtn.style.borderColor = 'var(--border)';
+    emptyBtn.style.color = 'var(--text-dim)';
+    emptyBtn.innerHTML = `<span>+ 송폼 진행 순서(Flow) 지정</span>`;
+    emptyBtn.title = '탭하여 송폼 진행 순서 지정';
+    emptyBtn.addEventListener('click', () => openSongformOrderModal());
+    els.songformFlowDisplayArea.appendChild(emptyBtn);
   }
 }
 
@@ -1724,8 +1814,14 @@ function renderSongformOrderFlowList() {
 }
 
 /* ==================================================
-   설정 모달 관리 (송폼 라벨, 주제 태그, 테마, 네비게이션)
+   환경 설정 화면 관리 (송폼 라벨, 주제 태그, 테마, 네비게이션)
    ================================================== */
+export function renderSettingsView() {
+  renderSongformManageList();
+  renderThemeManageList();
+  updateSettingsUIButtons();
+}
+
 function renderSongformManageList() {
   els.songformManageList.innerHTML = '';
   state.songformLabels.forEach((label, idx) => {
@@ -1929,12 +2025,7 @@ function wireEventListeners() {
   els.navLeaderBtn.addEventListener('click', () => switchToMenu('leader'));
   els.navSongLibraryBtn.addEventListener('click', () => switchToMenu('library'));
 
-  els.navSettingsBtn.addEventListener('click', () => {
-    renderSongformManageList();
-    renderThemeManageList();
-    updateSettingsUIButtons();
-    show(els.settingsModal, 'flex');
-  });
+  els.navSettingsBtn.addEventListener('click', () => switchToMenu('settings'));
 
   // 마스터 악보 보관함 검색 & 업로드
   if (els.libraryUploadBtn) {
@@ -2410,7 +2501,9 @@ function wireEventListeners() {
   });
 
   // 모달 닫기
-  document.querySelectorAll('[data-close-settings]').forEach(el => el.addEventListener('click', () => hide(els.settingsModal)));
+  if (els.settingsModal) {
+    document.querySelectorAll('[data-close-settings]').forEach(el => el.addEventListener('click', () => hide(els.settingsModal)));
+  }
   document.querySelectorAll('[data-close-textmemo]').forEach(el => el.addEventListener('click', () => hide(els.textMemoModal)));
 
   // 설정 테마 & 네비게이션

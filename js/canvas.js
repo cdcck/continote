@@ -27,12 +27,12 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song) {
       const vh = viewer.clientHeight;
       if (vw === 0 || vh === 0) return resolve();
 
-      // 악보 종횡비 유지 계산
+      // 악보 종횡비 유지 계산 (가로는 가운데 정렬, 세로는 상단 여백 없이 위로 밀착)
       const scale = Math.min(vw / img.width, vh / img.height);
       const dw = Math.floor(img.width * scale);
       const dh = Math.floor(img.height * scale);
       const dx = Math.floor((vw - dw) / 2);
-      const dy = Math.floor((vh - dh) / 2);
+      const dy = 0; // 악보 위에 여백을 없애고 위로 딱 밀착
 
       currentSheetRect = { x: dx, y: dy, w: dw, h: dh };
 

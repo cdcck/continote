@@ -6,8 +6,8 @@ export const state = {
   theme: 'system', // 기본값: 'system' ('system' | 'light' | 'dark')
   navDirection: 'horizontal',
   locked: true, // 기본값: 🔒 잠김 (보기 모드)
-  activeMenu: 'user', // 'user' | 'leader' | 'library'
-  viewLevel: 'contiList', // 'contiList' | 'songList' | 'viewer' | 'songLibrary'
+  activeMenu: 'user', // 'user' | 'leader' | 'library' | 'settings'
+  viewLevel: 'contiList', // 'contiList' | 'songList' | 'viewer' | 'songLibrary' | 'settings'
   viewerReturnView: null, // 'songList' | 'songLibrary' (뷰어에서 뒤로갈 대상 뷰)
   currentUser: null, // 로그인 사용자 정보 { email, name, picture }
   contis: [], // 콘티 목록 [{ id, title, date, memo, authorEmail, authorName, sharedWith: [], songs: [] }]
