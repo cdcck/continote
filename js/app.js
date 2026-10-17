@@ -42,7 +42,7 @@ const DOM_IDS = [
   'contiListView', 'contiListContainer', 'contiEmptyState', 'emptyContiCreateBtn',
   // 3. [2단계] 곡 목록 뷰
   'songListView', 'songListContiTitle', 'songListSongCountBadge', 'songListContiDate', 'songListContiMemo',
-  'songListContainer', 'songListEmptyState', 'emptySongAddBtn',
+  'songListContainer', 'songListEmptyState', 'emptySongTitle', 'emptySongDesc', 'emptySongAddBtnWrapper', 'emptySongAddBtn',
   // 4. [마스터 악보 보관함 뷰]
   'songLibraryView', 'libraryUploadBtn', 'librarySearchInput', 'libraryThemeFilterBar',
   'librarySongListContainer', 'libraryEmptyState',
@@ -476,6 +476,20 @@ export function renderSongListView() {
   if (els.songListContiMemo) els.songListContiMemo.textContent = currentConti?.memo ? `📝 ${currentConti.memo}` : '';
 
   if (!state.songs.length) {
+    const isLeader = state.activeMenu === 'leader';
+    if (els.emptySongTitle) {
+      els.emptySongTitle.textContent = isLeader
+        ? '콘티에 등록된 악보가 없습니다'
+        : '인도자가 아직 악보를 등록하지 않았습니다';
+    }
+    if (els.emptySongDesc) {
+      els.emptySongDesc.textContent = isLeader
+        ? '아래 버튼을 눌러 콘티에 첫 번째 악보를 등록하세요.'
+        : '인도자가 악보를 추가하면 여기에 자동으로 표시됩니다.';
+    }
+    if (els.emptySongAddBtnWrapper) {
+      els.emptySongAddBtnWrapper.style.display = isLeader ? 'flex' : 'none';
+    }
     show(els.songListEmptyState, 'block');
     return;
   }
@@ -641,6 +655,7 @@ async function removeSong(songId) {
    ================================================== */
 let selectedLibraryTheme = null;
 let targetAddToContiSong = null;
+let targetAddToContiMode = 'sheet'; // 'sheet' | 'full'
 
 export function renderSongLibraryView() {
   if (!els.librarySongListContainer) return;
@@ -704,6 +719,8 @@ export function renderSongLibraryView() {
     card.style.borderColor = 'var(--border)';
     card.style.backgroundColor = 'var(--surface)';
 
+    const hasSongform = Array.isArray(song.songform) && song.songform.length > 0;
+
     const themeBadges = (song.themes || []).map(t =>
       `<span class="text-[10px] px-1.5 py-0.2 rounded-md font-semibold border" style="border-color:var(--border);background:var(--surface-2);color:var(--text-dim)">#${escapeHtml(t)}</span>`
     ).join(' ');
@@ -711,27 +728,39 @@ export function renderSongLibraryView() {
     card.innerHTML = `
       <div class="song-info-area flex items-center gap-3 min-w-0 flex-1 cursor-pointer select-none active:opacity-80 transition-opacity" title="악보 및 송폼 열기">
         <div class="min-w-0 flex-1 py-0.5">
+          <!-- 1번째 줄: 곡 제목 -->
           <div class="flex items-center min-w-0">
             <h4 class="font-bold text-sm sm:text-base truncate whitespace-nowrap flex-1 min-w-0">${escapeHtml(song.name)}</h4>
           </div>
+          <!-- 2번째 줄: Key, 박자, 템포, 주제 태그 -->
           <div class="flex items-center gap-1.5 mt-1 flex-wrap">
-            ${song.songform && song.songform.length ? `
-              <span class="text-xs px-2 py-0.5 rounded-full font-bold truncate whitespace-nowrap" style="background:var(--accent-soft);color:var(--accent)">
-                ${song.songform.join(' > ')}
-              </span>` : ''}
-            ${themeBadges}
             ${song.key ? `<span class="text-[11px] sm:text-xs px-1.5 py-0.5 rounded-md font-bold border shrink-0" style="border-color:var(--border);background:var(--surface-2);color:var(--accent)">${escapeHtml(song.key)}</span>` : ''}
             ${song.timeSig ? `<span class="text-[11px] sm:text-xs px-1.5 py-0.5 rounded font-semibold text-neutral-500 shrink-0">${song.timeSig}</span>` : ''}
             ${song.tempo ? `<span class="text-[11px] sm:text-xs font-semibold text-neutral-500 shrink-0">♩${escapeHtml(song.tempo)}</span>` : ''}
+            ${themeBadges}
           </div>
+          <!-- 3번째 줄: 송폼 진행 순서 (있을 경우 단독 표시) -->
+          ${hasSongform ? `
+            <div class="mt-1.5 flex items-center min-w-0">
+              <span class="text-xs px-2 py-0.5 rounded-full font-bold truncate max-w-full" style="background:var(--accent-soft);color:var(--accent)" title="${song.songform.join(' > ')}">
+                ${song.songform.join(' > ')}
+              </span>
+            </div>` : ''}
         </div>
       </div>
-      <div class="shrink-0 flex items-center gap-1.5">
-        <button data-add-to-conti="${song.id}" class="flex items-center gap-1 px-3 py-2 rounded-xl text-white font-semibold text-xs shadow-sm active:scale-95 transition-all"
-          style="background:var(--accent)" title="내 콘티에 추가">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5"><path d="M12 5v14M5 12h14"/></svg>
-          <span>내 콘티에 추가</span>
+      <!-- 우측 버튼 영역: 송폼 유무에 따라 1단 또는 위아래 2단 배치 -->
+      <div class="shrink-0 flex flex-col items-stretch gap-1.5">
+        <button data-import-sheet="${song.id}" class="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl border font-semibold text-xs transition-all active:scale-95"
+          style="border-color:var(--border);background:var(--surface-2);color:var(--text)" title="악보 이미지만 내 콘티로 가져오기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span class="whitespace-nowrap">악보 가져오기</span>
         </button>
+        ${hasSongform ? `
+          <button data-import-full="${song.id}" class="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl text-white font-semibold text-xs shadow-sm active:scale-95 transition-all"
+            style="background:var(--accent)" title="악보, 송폼 순서, 스티커를 모두 내 콘티로 가져오기">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5"><path d="M12 5v14M5 12h14"/></svg>
+            <span class="whitespace-nowrap">전체 가져오기</span>
+          </button>` : ''}
       </div>
     `;
 
@@ -740,11 +769,20 @@ export function renderSongLibraryView() {
       openViewerForLibrarySong(song, list);
     });
 
-    // 내 콘티 추가 버튼
-    card.querySelector('[data-add-to-conti]').addEventListener('click', (e) => {
+    // 악보 가져오기 버튼 클릭
+    card.querySelector('[data-import-sheet]').addEventListener('click', (e) => {
       e.stopPropagation();
-      openAddToContiModal(song);
+      openAddToContiModal(song, 'sheet');
     });
+
+    // 전체 가져오기 버튼 클릭 (송폼이 있는 경우)
+    const fullBtn = card.querySelector('[data-import-full]');
+    if (fullBtn) {
+      fullBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openAddToContiModal(song, 'full');
+      });
+    }
 
     els.librarySongListContainer.appendChild(card);
   });
@@ -767,9 +805,12 @@ export async function openViewerForLibrarySong(song, libraryList = null) {
   await renderAll();
 }
 
-function openAddToContiModal(song) {
+function openAddToContiModal(song, mode = 'sheet') {
   targetAddToContiSong = song;
-  els.addToContiSongTitle.textContent = `${song.name} (Key ${song.key || '-'})`;
+  targetAddToContiMode = mode;
+  const isFull = mode === 'full';
+  const modeBadge = isFull ? ' [전체: 악보+송폼+스티커]' : ' [악보만]';
+  els.addToContiSongTitle.textContent = `${song.name} (Key ${song.key || '-'})${modeBadge}`;
   els.addToContiListContainer.innerHTML = '';
 
   const myEmail = state.currentUser?.email || 'leader@continote.com';
@@ -1228,7 +1269,7 @@ function renderSongformStickyChips() {
   state.songformLabels.forEach(label => {
     const btn = document.createElement('button');
     const isI = (label === 'I');
-    btn.className = `shrink-0 px-2.5 py-1 rounded-full border text-xs sm:text-sm font-bold transition-all active:scale-95 shadow-sm ${isI ? 'part-serif-i' : ''}`;
+    btn.className = `shrink-0 px-2 py-0.5 rounded-full border text-xs sm:text-sm font-bold transition-all active:scale-95 shadow-sm ${isI ? 'part-serif-i' : ''}`;
     btn.style.borderColor = 'var(--accent)';
     btn.style.color = 'var(--accent)';
     btn.style.backgroundColor = 'var(--surface)';
@@ -1243,12 +1284,12 @@ function renderSongformStickyChips() {
   if (song && song.songform && song.songform.length > 0) {
     const isLeader = state.activeMenu === 'leader';
     const flowWrap = document.createElement('div');
-    flowWrap.className = 'flex items-center gap-1.5 flex-nowrap shrink-0 overflow-x-auto no-scrollbar py-0.5';
+    flowWrap.className = 'flex items-center gap-1 flex-nowrap shrink-0 overflow-x-auto no-scrollbar py-0.5';
 
     song.songform.forEach((step, idx) => {
       const isI = (step === 'I');
       const stepChip = document.createElement('span');
-      stepChip.className = `inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold shadow-sm shrink-0 ${isI ? 'part-serif-i' : ''}`;
+      stepChip.className = `inline-flex items-center px-1 py-0.5 rounded text-sm font-bold shadow-sm shrink-0 leading-none ${isI ? 'part-serif-i' : ''}`;
       stepChip.style.backgroundColor = 'var(--accent-soft)';
       stepChip.style.color = 'var(--accent)';
       stepChip.textContent = step;
@@ -1256,7 +1297,7 @@ function renderSongformStickyChips() {
 
       if (idx < song.songform.length - 1) {
         const arrow = document.createElement('span');
-        arrow.className = 'text-[11px] font-bold opacity-40 shrink-0';
+        arrow.className = 'text-xs font-bold opacity-30 shrink-0';
         arrow.textContent = '>';
         flowWrap.appendChild(arrow);
       }
@@ -1915,24 +1956,32 @@ function wireEventListeners() {
       if (targetConti) {
         if (!targetConti.songs) targetConti.songs = [];
         const newSongId = crypto.randomUUID();
+        const isFull = targetAddToContiMode === 'full';
+
         const cloned = {
           ...targetAddToContiSong,
           id: newSongId,
-          songform: Array.isArray(targetAddToContiSong.songform) ? [...targetAddToContiSong.songform] : [],
+          songform: (isFull && Array.isArray(targetAddToContiSong.songform)) ? [...targetAddToContiSong.songform] : [],
           order: targetConti.songs.length
         };
         targetConti.songs.push(cloned);
 
-        // 스티커 복사: 원본 곡에 부착된 스티커가 있다면 새 곡으로 복제
-        const origStickers = state.stickersBySong[targetAddToContiSong.id] || (await loadStickers(targetAddToContiSong.id));
-        if (origStickers && origStickers.length) {
-          state.stickersBySong[newSongId] = origStickers.map(st => ({ ...st, id: crypto.randomUUID() }));
-          await saveStickers(newSongId);
+        // 전체 가져오기일 때만 스티커 복사
+        if (isFull) {
+          const origStickers = state.stickersBySong[targetAddToContiSong.id] || (await loadStickers(targetAddToContiSong.id));
+          if (origStickers && origStickers.length) {
+            state.stickersBySong[newSongId] = origStickers.map(st => ({ ...st, id: crypto.randomUUID() }));
+            await saveStickers(newSongId);
+          }
         }
 
         await saveContis();
+        if (hasDriveAuth() && state.currentContiId) {
+          syncContiDetailToDrive(state.currentContiId, true);
+        }
         hide(els.addToContiModal);
-        alert(`'${targetConti.title}' 콘티에 '${targetAddToContiSong.name}' 악보가 추가되었습니다!`);
+        const modeDesc = isFull ? '전체(악보+송폼+스티커)' : '악보';
+        alert(`'${targetConti.title}' 콘티에 '${targetAddToContiSong.name}' ${modeDesc}를 가져왔습니다!`);
       }
     });
   }

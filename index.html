@@ -224,18 +224,18 @@
             <circle cx="18" cy="16" r="3" />
           </svg>
         </div>
-        <p class="font-bold text-base">콘티에 등록된 악보가 없습니다</p>
-        <p class="text-xs sm:text-sm max-w-xs mx-auto" style="color:var(--text-dim)">
-          인도자 메뉴에서 '악보 추가'를 눌러 악보를 업로드하세요.
+        <p id="emptySongTitle" class="font-bold text-base">콘티에 등록된 악보가 없습니다</p>
+        <p id="emptySongDesc" class="text-xs sm:text-sm max-w-xs mx-auto" style="color:var(--text-dim)">
+          아래 버튼을 눌러 콘티에 첫 번째 악보를 등록하세요.
         </p>
-        <div class="flex justify-center">
+        <div id="emptySongAddBtnWrapper" class="flex justify-center">
           <button id="emptySongAddBtn"
             class="px-4 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all inline-flex items-center gap-1.5"
             style="background:var(--accent)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
               <path d="M12 5v14M5 12h14" />
             </svg>
-            악보 추가하기 (인도자)
+            악보 추가하기
           </button>
         </div>
       </div>
