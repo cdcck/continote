@@ -8,1316 +8,1264 @@
   <title>ContiNote</title>
   <link rel="icon"
     href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%BC%3C/text%3E%3C/svg%3E" />
+
+  <!-- PWA Manifest & Mobile Web App Meta -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#3A7BD5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ContiNote" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Identity Services (GIS) for Google Drive REST API v3 -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <style>
-    :root {
-      --bg: #F9F6F0;
-      --surface: #FFFFFF;
-      --surface-rgb: 255, 255, 255;
-      --surface-2: #F1ECE2;
-      --text: #2B2730;
-      --text-dim: #8A8390;
-      --accent: #6B5B95;
-      --accent-soft: #6B5B9522;
-      --border: #E4DDD0;
-    }
 
-    html.dark {
-      --bg: #0F0E13;
-      --surface: #1C1A22;
-      --surface-rgb: 28, 26, 34;
-      --surface-2: #242230;
-      --text: #F3F1F7;
-      --text-dim: #8E899B;
-      --accent: #9D4EDD;
-      --accent-soft: #9D4EDD33;
-      --border: #322E3D;
-    }
-
-    * {
-      -webkit-tap-highlight-color: transparent;
-      box-sizing: border-box;
-    }
-
-    html,
-    body {
-      height: 100%;
-      overscroll-behavior: none;
-    }
-
-    body {
-      background: var(--bg);
-      color: var(--text);
-    }
-
-    .no-scrollbar::-webkit-scrollbar {
-      display: none;
-    }
-
-    .no-scrollbar {
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-    }
-
-    /* 다크모드 시 Base Canvas(악보)만 선택적 반전 처리 */
-    #baseCanvas {
-      transition: filter .2s ease;
-    }
-
-    html.dark #baseCanvas {
-      filter: invert(1) hue-rotate(180deg);
-    }
-
-    /* 스티커 레이어 */
-    .sticker {
-      position: absolute;
-      touch-action: none;
-      cursor: grab;
-      transform: translate(-50%, -50%);
-      white-space: nowrap;
-      z-index: 5;
-      user-select: none;
-    }
-
-    .sticker.songform {
-      padding: .2rem .65rem;
-      border-radius: .5rem;
-      background: var(--accent);
-      color: #fff;
-      font-size: .85rem;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, .25);
-    }
-
-    .sticker.text-memo {
-      padding: .4rem .6rem;
-      border-radius: .5rem;
-      background: #FFE58A;
-      color: #4A3B00;
-      font-size: .8rem;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, .2);
-      max-width: 45vw;
-      white-space: normal;
-    }
-
-    .del-badge {
-      position: absolute;
-      top: -10px;
-      right: -10px;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      background: #E0484B;
-      color: #fff;
-      font-size: 13px;
-      line-height: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, .4);
-    }
-
-    #stickerLayer.locked .sticker {
-      pointer-events: none !important;
-      cursor: default;
-    }
-
-    /* 자물쇠 토글 스타일 */
-    .lock-view-mode {
-      background: rgba(var(--surface-rgb), 0.65) !important;
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-      border: 1px solid var(--border);
-      opacity: 0.85;
-    }
-
-    .lock-edit-mode {
-      background: var(--accent) !important;
-      color: #ffffff !important;
-      box-shadow: 0 0 0 2px var(--surface), 0 0 8px var(--accent-soft);
-      opacity: 1;
-    }
-
-    /* 크롭 박스 & 모서리 핸들 */
-    .crop-handle {
-      position: absolute;
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      background: var(--accent);
-      border: 3px solid #fff;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, .4);
-      touch-action: none;
-      z-index: 20;
-    }
-
-    #cropBox {
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, .55);
-    }
-
-    input[type="range"] {
-      accent-color: var(--accent);
-    }
-
-    #bottomNav {
-      padding-bottom: env(safe-area-inset-bottom, 0px);
-    }
-  </style>
+  <!-- 모듈화된 전용 CSS 스타일시트 -->
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 
-<body class="flex flex-col" style="height:100dvh">
+<body class="flex flex-col h-full overflow-hidden select-none">
 
-  <!-- ===== 최상단 헤더 ===== -->
-  <header class="shrink-0 h-14 flex items-center justify-between px-4 border-b select-none"
-    style="border-color:var(--border);background:var(--surface)">
-    <div class="flex items-center gap-2">
-      <span class="text-xl">🎼</span>
-      <h1 class="font-bold text-lg tracking-tight">ContiNote</h1>
+  <!-- ==========================================
+       [1] 최상단 헤더 (콘티 목록 vs 곡 목록 vs 악보 뷰어 3단계 반응형)
+       ========================================== -->
+  <header
+    class="shrink-0 h-14 flex items-center justify-between px-2.5 sm:px-4 border-b select-none z-30 transition-colors"
+    style="border-color:var(--header-border);background:var(--header-bg)">
+
+    <!-- 좌측 영역: 뒤로가기 버튼 & 콘티/곡 정보 (모바일 말줄임 완비) -->
+    <div class="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1 mr-2">
+      <!-- 뒤로가기 버튼 -->
+      <button id="backBtn"
+        class="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl border text-xs sm:text-sm font-semibold active:scale-95 transition-all shrink-0"
+        style="display:none;border-color:var(--border);background:var(--surface-2)" title="이전 화면으로 돌아가기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+          stroke-linejoin="round" class="w-4 h-4">
+          <path d="m15 18-6-6 6-6" />
+        </svg>
+        <span id="backBtnText" class="hidden xs:inline">뒤로</span>
+      </button>
+
+      <!-- 콘티 목록 상태 로고 -->
+      <div id="headerLogoArea" class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <span class="text-xl">🎼</span>
+        <h1 class="font-bold text-base sm:text-lg tracking-tight">ContiNote</h1>
+      </div>
+
+      <!-- 곡 목록 및 뷰어 상태 헤더 타이틀 -->
+      <div id="viewerHeaderInfo" class="flex flex-col min-w-0 ml-0.5 sm:ml-1" style="display:none">
+        <span id="viewerContiTitle"
+          class="text-xs sm:text-sm font-bold truncate max-w-[110px] sm:max-w-[200px] md:max-w-xs">예배 콘티</span>
+        <span id="viewerSongTitle" class="text-[11px] truncate max-w-[110px] sm:max-w-[200px]"
+          style="color:var(--text-dim)"></span>
+      </div>
     </div>
-    <!-- 자물쇠 토글 버튼 (🔒 잠김=보기 모드 / 🔓 열림=편집 모드) -->
-    <button id="lockBtn" class="w-10 h-10 flex items-center justify-center rounded-xl transition-all"
-      title="보기/편집 모드 전환">
-      <span id="lockClosedIcon" class="w-5 h-5 flex items-center justify-center">
+
+    <!-- 우측 영역: 버튼 그룹 (모바일에서 컴팩트 아이콘 버튼으로 자동 전환) -->
+    <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+      <!-- 인도자 전용 새 콘티 추가 버튼 -->
+      <button id="addContiBtn"
+        class="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-white font-semibold text-xs sm:text-sm shadow-sm active:scale-95 transition-all"
+        style="display:none;background:var(--accent)" title="새로운 예배 콘티 생성">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-          stroke-linejoin="round" class="w-full h-full">
-          <rect x="4" y="11" width="16" height="9" rx="2" />
-          <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+          stroke-linejoin="round" class="w-4 h-4 shrink-0">
+          <path d="M12 5v14M5 12h14" />
         </svg>
-      </span>
-      <span id="lockOpenIcon" class="w-5 h-5 flex items-center justify-center" style="display:none">
+        <span class="hidden sm:inline">새 콘티</span>
+      </button>
+
+      <!-- 인도자 전용 악보 추가 버튼 (현재 콘티에 추가) -->
+      <button id="songListAddBtn"
+        class="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-white font-semibold text-xs sm:text-sm shadow-sm active:scale-95 transition-all"
+        style="display:none;background:var(--accent)" title="현재 콘티에 악보 추가">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-          stroke-linejoin="round" class="w-full h-full">
-          <rect x="4" y="11" width="16" height="9" rx="2" />
-          <path d="M8 11V7a4 4 0 0 1 7.76-2.22" />
+          stroke-linejoin="round" class="w-4 h-4 shrink-0">
+          <path d="M12 5v14M5 12h14" />
         </svg>
-      </span>
-    </button>
+        <span class="hidden sm:inline">악보 추가</span>
+      </button>
+
+      <!-- 곡 목록에 추가 버튼 (모바일: 아이콘만 / 태블릿 이상: 텍스트 포함) -->
+      <button id="addLibrarySongBtn"
+        class="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl border text-xs sm:text-sm font-semibold active:scale-95 transition-all shadow-sm"
+        style="border-color:var(--border);background:var(--surface-2);color:var(--text)"
+        title="곡 목록(악보 보관함)에 새 악보 추가">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round" class="w-4 h-4 shrink-0" style="color:var(--accent)">
+          <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H8v20H6.5A2.5 2.5 0 0 1 4 19.5Z" />
+          <path d="M8 2h4v20H8" />
+          <path d="M12 2h3.5a2.5 2.5 0 0 1 2.5 2.5v15a2.5 2.5 0 0 1-2.5 2.5H12" />
+          <path d="M19 8v6m-3-3h6" />
+        </svg>
+        <span class="hidden sm:inline">곡 목록에 추가</span>
+      </button>
+
+      <!-- 자물쇠 토글 버튼 -->
+      <button id="lockBtn"
+        class="w-8 h-8 sm:w-[34px] sm:h-[34px] flex items-center justify-center rounded-xl border active:scale-95 transition-all shrink-0 lock-view-mode"
+        style="display:none" title="보기/편집 모드 전환">
+        <span id="lockClosedIcon" class="flex items-center justify-center">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" class="w-4 h-4">
+            <rect x="5" y="11" width="14" height="10" rx="2" />
+            <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+          </svg>
+        </span>
+        <span id="lockOpenIcon" class="flex items-center justify-center" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" class="w-4 h-4">
+            <rect x="5" y="11" width="14" height="10" rx="2" />
+            <path d="M8 11V7a4 4 0 0 1 8 0v1.5" />
+          </svg>
+        </span>
+      </button>
+
+      <!-- Google 로그인 / 프로필 영역 -->
+      <div id="authHeaderArea" class="flex items-center">
+        <button id="headerGoogleLoginBtn"
+          class="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl border text-xs font-semibold active:scale-95 transition-all"
+          style="border-color:var(--border);background:var(--surface-2)" title="Google 로그인">
+          <svg viewBox="0 0 24 24" class="w-4 h-4 shrink-0">
+            <path fill="#4285F4"
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+            <path fill="#34A853"
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+            <path fill="#FBBC05"
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+            <path fill="#EA4335"
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+          </svg>
+          <span class="hidden md:inline">로그인</span>
+        </button>
+
+        <div id="headerProfileChip"
+          class="flex items-center gap-1.5 p-1 rounded-xl border cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+          style="display:none;border-color:var(--border);background:var(--surface-2)" title="프로필 및 계정 관리">
+          <img id="headerUserAvatar" src="" class="w-6 h-6 rounded-full object-cover shrink-0" alt="" />
+          <span id="headerUserName"
+            class="text-xs font-bold max-w-[60px] sm:max-w-[80px] truncate hidden sm:inline"></span>
+        </div>
+      </div>
+    </div>
   </header>
 
-  <!-- ===== 송폼 칩 바 (화면 최상단 헤더 바로 아래 sticky 고정) ===== -->
-  <div id="songformBar"
-    class="sticky top-0 z-20 overflow-x-auto no-scrollbar flex flex-nowrap items-center gap-2 px-3 py-2 border-b shrink-0 select-none"
-    style="border-color:var(--border);background:var(--bg)"></div>
+  <!-- ==========================================
+       [1단계: VIEW 1] 콘티 목록 화면 (사용자/인도자 첫 진입 화면)
+       ========================================== -->
+  <main id="contiListView" class="flex-1 overflow-y-auto p-4 sm:p-6 select-none" style="background:var(--bg)">
+    <div class="max-w-2xl mx-auto space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="font-bold text-lg sm:text-xl">예배 콘티 목록</h2>
+          <p class="text-xs sm:text-sm mt-0.5" style="color:var(--text-dim)">연주하거나 준비할 예배 콘티를 선택하세요</p>
+        </div>
+      </div>
 
-  <!-- ===== 메인 악보 뷰어 (Canvas 3중 레이어) ===== -->
-  <main id="viewer" class="relative flex-1 min-h-0 overflow-hidden select-none" style="background:var(--surface)">
+      <!-- 콘티 카드 목록 컨테이너 -->
+      <div id="contiListContainer" class="space-y-3"></div>
 
-    <!-- 등록된 악보 없음 안내 -->
-    <div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center"
-      style="display:none">
-      <span class="w-16 h-16" style="color:var(--text-dim)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-          stroke-linejoin="round" class="w-full h-full">
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <circle cx="8.5" cy="8.5" r="1.5" />
-          <path d="m21 15-5-5L5 21" />
-        </svg>
-      </span>
-      <p class="font-semibold text-base">등록된 악보가 없습니다</p>
-      <p class="text-sm" style="color:var(--text-dim)">하단 인도자 메뉴에서 악보를 등록해보세요</p>
-      <button id="emptyAddBtn" class="mt-2 px-5 py-2.5 rounded-xl text-white font-semibold shadow-sm"
-        style="background:var(--accent)">악보 추가하기</button>
-    </div>
-
-    <!-- 1. Base Canvas (악보 이미지) -->
-    <canvas id="baseCanvas" class="absolute inset-0"></canvas>
-
-    <!-- 2. Sticker DOM Layer (송폼 및 텍스트 스티커) -->
-    <div id="stickerLayer" class="absolute inset-0 pointer-events-none"></div>
-
-    <!-- 3. User Drawing Canvas (개인 필기) -->
-    <canvas id="userCanvas" class="absolute inset-0" style="pointer-events:none"></canvas>
-
-    <!-- 곡 넘김 내비게이션 UI (보기 모드 전용 / 편집 모드 시 차단 및 hidden) -->
-    <div id="navUI" class="absolute inset-0 select-none" style="display:none">
-      <button id="hotspotPrev" class="absolute focus:outline-none" aria-label="이전 곡"></button>
-      <button id="hotspotNext" class="absolute focus:outline-none" aria-label="다음 곡"></button>
-      <div id="navIndicator"
-        class="absolute bottom-3 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full text-xs font-semibold shadow-md pointer-events-none"
-        style="background:rgba(0,0,0,.6);color:#fff"></div>
+      <!-- 콘티 없음 안내 -->
+      <div id="contiEmptyState" class="py-16 text-center space-y-3" style="display:none">
+        <div class="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center"
+          style="background:var(--surface-2);color:var(--accent)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-8 h-8">
+            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
+            <path d="M8 7h8M8 11h5" />
+          </svg>
+        </div>
+        <p class="font-bold text-base">등록된 예배 콘티가 없습니다</p>
+        <p class="text-xs sm:text-sm max-w-xs mx-auto" style="color:var(--text-dim)">
+          인도자 메뉴에서 '새 콘티'를 만들어 악보와 송폼을 구성해보세요.
+        </p>
+        <button id="emptyContiCreateBtn"
+          class="px-4 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all inline-flex items-center gap-1.5"
+          style="background:var(--accent)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          새 콘티 만들기 (인도자)
+        </button>
+      </div>
     </div>
   </main>
 
-  <!-- ===== 인도자 툴바 (2줄 깨짐 방지: flex-nowrap overflow-x-auto shrink-0) ===== -->
+  <!-- ==========================================
+       [2단계: VIEW 2] 곡 목록 화면 (콘티 선택 시 진입하는 신규 독립 뷰)
+       ========================================== -->
+  <main id="songListView" class="flex-1 overflow-y-auto p-4 sm:p-6 select-none"
+    style="display:none;background:var(--bg)">
+    <div class="max-w-2xl mx-auto space-y-4">
+      <!-- 콘티 상세 헤더 카드 -->
+      <div class="p-4 rounded-2xl border flex flex-col gap-1.5"
+        style="border-color:var(--border);background:var(--surface)">
+        <div class="flex items-center justify-between">
+          <span id="songListContiDate" class="text-xs font-semibold" style="color:var(--text-dim)"></span>
+          <span id="songListSongCountBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0"
+            style="background:var(--accent-soft);color:var(--accent)">0곡</span>
+        </div>
+        <div>
+          <h2 id="songListContiTitle" class="font-bold text-lg sm:text-xl truncate">예배 콘티</h2>
+          <span id="songListContiMemo" class="text-xs block mt-0.5 truncate" style="color:var(--text-dim)"></span>
+        </div>
+      </div>
+
+      <!-- 곡 카드 목록 컨테이너 -->
+      <div id="songListContainer" class="space-y-2.5"></div>
+
+      <!-- 곡 없음 안내 -->
+      <div id="songListEmptyState" class="py-12 text-center space-y-3" style="display:none">
+        <div class="w-14 h-14 mx-auto rounded-2xl flex items-center justify-center"
+          style="background:var(--surface-2);color:var(--accent)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-7 h-7">
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
+          </svg>
+        </div>
+        <p class="font-bold text-base">콘티에 등록된 악보가 없습니다</p>
+        <p class="text-xs sm:text-sm max-w-xs mx-auto" style="color:var(--text-dim)">
+          인도자 메뉴에서 '악보 추가'를 눌러 악보를 업로드하세요.
+        </p>
+        <div class="flex justify-center">
+          <button id="emptySongAddBtn"
+            class="px-4 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all inline-flex items-center gap-1.5"
+            style="background:var(--accent)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            악보 추가하기 (인도자)
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ==========================================
+       [VIEW: 악보 보관함] 전체 악보 라이브러리 화면 (하단 '곡 목록' 메뉴)
+       ========================================== -->
+  <main id="songLibraryView" class="flex-1 overflow-y-auto p-4 sm:p-6 select-none"
+    style="display:none;background:var(--bg)">
+    <div class="max-w-2xl mx-auto space-y-4">
+      <!-- 상단 헤더 & 검색/필터 카드 -->
+      <div class="p-4 rounded-2xl border flex flex-col gap-3"
+        style="border-color:var(--border);background:var(--surface)">
+        <div class="flex items-center justify-between">
+          <h2 class="font-bold text-lg sm:text-xl">악보 보관함</h2>
+          <button id="libraryUploadBtn"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white font-semibold text-xs sm:text-sm shadow-sm active:scale-95 transition-all"
+            style="background:var(--accent)" title="새 악보 업로드">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span>새 악보</span>
+          </button>
+        </div>
+
+        <!-- 검색창 -->
+        <div class="relative">
+          <input id="librarySearchInput" type="text" placeholder="곡명, 코드, 주제 검색..."
+            class="w-full pl-9 pr-3 py-2 rounded-xl border text-sm outline-none focus:ring-2"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            class="w-4 h-4 absolute left-3 top-3 text-neutral-400">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.3-4.3" />
+          </svg>
+        </div>
+
+        <!-- 주제(Theme) 필터 칩 바 -->
+        <div id="libraryThemeFilterBar" class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5"></div>
+      </div>
+
+      <!-- 악보 카드 리스트 컨테이너 -->
+      <div id="librarySongListContainer" class="space-y-2.5"></div>
+
+      <!-- 악보 없음 안내 -->
+      <div id="libraryEmptyState" class="py-12 text-center space-y-3" style="display:none">
+        <div class="w-14 h-14 mx-auto rounded-2xl flex items-center justify-center"
+          style="background:var(--surface-2);color:var(--accent)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-7 h-7">
+            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H8v20H6.5A2.5 2.5 0 0 1 4 19.5Z" />
+            <path d="M8 2h4v20H8" />
+            <path d="M12 2h3.5a2.5 2.5 0 0 1 2.5 2.5v15a2.5 2.5 0 0 1-2.5 2.5H12" />
+          </svg>
+        </div>
+        <p class="font-bold text-base">보관함에 등록된 악보가 없습니다</p>
+        <p class="text-xs sm:text-sm max-w-xs mx-auto" style="color:var(--text-dim)">
+          '새 악보'를 눌러 악보를 등록하면 언제든 콘티에 재사용할 수 있습니다.
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ==========================================
+       [3단계: VIEW 3] 악보 뷰어 섹션 (곡 선택 시 진입)
+       ========================================== -->
+  <section id="viewerSection" class="flex-1 flex flex-col min-h-0 overflow-hidden" style="display:none">
+    <!-- 송폼 바: 
+         - 인도자 모드(🔓): 스티커 칩들 + 현재 곡 송폼 순서 바
+         - 사용자 모드: 스티커 칩 숨김, 오직 [A1 > A2 > B ...] 순서 바만 상단에 표시 -->
+    <div id="songformStickyBar"
+      class="sticky top-0 z-20 overflow-x-auto no-scrollbar flex flex-nowrap items-center justify-between gap-2 px-3 py-1.5 border-b shrink-0 select-none transition-colors"
+      style="border-color:var(--border);background:var(--bg)">
+      <div class="flex items-center gap-2 overflow-x-auto no-scrollbar flex-nowrap min-w-0 flex-1">
+        <!-- 1. 인도자 전용 스티커 부착 칩 리스트 (사용자 모드에서는 완전 숨김) -->
+        <div id="songformChipsList" class="flex flex-nowrap items-center gap-1.5 shrink-0"></div>
+
+        <!-- 2. 송폼 진행 순서 바 (A1 > A2 > B ... / 사용자 & 인도자 공통 표시) -->
+        <div id="songformFlowDisplayArea" class="flex items-center gap-1.5 shrink-0 min-w-0"></div>
+      </div>
+
+      <!-- 3. 인도자 전용 스티커 크기 조정 버튼 [- / +] -->
+      <div id="stickerSizeControls" class="flex items-center gap-1 shrink-0 ml-auto pl-1" style="display:none">
+        <button id="stickerSizeDecBtn"
+          class="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg border font-bold text-xs sm:text-sm active:scale-95 transition-all"
+          style="border-color:var(--border);background:var(--surface-2)" title="스티커 크기 축소">-</button>
+        <span id="stickerSizeLabel" class="text-[11px] font-bold px-1 min-w-[32px] text-center"
+          style="color:var(--text-dim)">100%</span>
+        <button id="stickerSizeIncBtn"
+          class="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg border font-bold text-xs sm:text-sm active:scale-95 transition-all"
+          style="border-color:var(--border);background:var(--surface-2)" title="스티커 크기 확대">+</button>
+      </div>
+    </div>
+
+    <!-- 메인 악보 뷰어 Canvas -->
+    <main id="viewer" class="relative flex-1 min-h-0 overflow-hidden select-none" style="background:var(--surface)">
+      <!-- 등록된 악보 없음 안내 -->
+      <div id="emptyState"
+        class="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center z-10"
+        style="display:none">
+        <div class="w-16 h-16 rounded-2xl flex items-center justify-center"
+          style="background:var(--surface-2);color:var(--accent)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+            stroke-linejoin="round" class="w-8 h-8">
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
+          </svg>
+        </div>
+        <p class="font-bold text-base">콘티에 등록된 악보가 없습니다</p>
+        <p class="text-xs sm:text-sm max-w-xs" style="color:var(--text-dim)">
+          인도자 메뉴의 '곡 목록'에서 악보를 추가해주세요.
+        </p>
+      </div>
+
+      <!-- 줌/팬 적용 대상 무대 컨테이너 -->
+      <div id="stageContainer" class="absolute inset-0 origin-top-left touch-none">
+        <!-- 악보 이미지 1:1 밀착 래퍼 컨테이너 (스티커 및 필기 절대 어긋남 방지) -->
+        <div id="sheetContainer">
+          <!-- 1. Base Canvas: 악보 이미지 레이어 (다크 모드 시 선택적 invert) -->
+          <canvas id="baseCanvas" class="absolute inset-0 block"></canvas>
+
+          <!-- 2. Sticker DOM Layer: 송폼 칩 및 텍스트 메모 스티커 레이어 (다크 모드 invert 제외) -->
+          <div id="stickerLayer" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
+
+          <!-- 3. User Drawing Canvas: 개인 펜 필기 레이어 (다크 모드 invert 제외) -->
+          <canvas id="userCanvas" class="absolute inset-0 block" style="pointer-events:none"></canvas>
+        </div>
+      </div>
+
+      <!-- 편집 모드 전용 줌 컨트롤 바 -->
+      <div id="zoomControls"
+        class="absolute top-3 right-3 flex items-center gap-1 p-1 rounded-xl shadow-lg border backdrop-blur-md z-20 select-none transition-all"
+        style="display:none;background:var(--surface);border-color:var(--border)">
+        <button id="zoomOutBtn"
+          class="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm active:scale-95"
+          style="background:var(--surface-2)" title="축소" aria-label="축소">-</button>
+        <span id="zoomLevelText" class="px-1.5 text-xs font-semibold tabular-nums min-w-[42px] text-center">100%</span>
+        <button id="zoomInBtn"
+          class="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm active:scale-95"
+          style="background:var(--surface-2)" title="확대" aria-label="확대">+</button>
+        <button id="zoomResetBtn" class="px-2 h-7 rounded-lg text-xs font-semibold active:scale-95 border ml-0.5"
+          style="border-color:var(--border);background:var(--surface-2)" title="100% 원본 크기">리셋</button>
+      </div>
+
+      <!-- 곡 넘김 내비게이션 UI (보기 모드 전용) -->
+      <div id="navUI" class="absolute inset-0 select-none pointer-events-none" style="display:none">
+        <button id="hotspotPrev" class="absolute pointer-events-auto focus:outline-none" aria-label="이전 곡"></button>
+        <button id="hotspotNext" class="absolute pointer-events-auto focus:outline-none" aria-label="다음 곡"></button>
+
+        <div id="navIndicator"
+          class="absolute bottom-4 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded-full text-xs font-semibold shadow-lg backdrop-blur-md pointer-events-none transition-opacity"
+          style="background:rgba(0,0,0,0.65);color:#ffffff;letter-spacing:0.02em">
+          1 / 1
+        </div>
+      </div>
+    </main>
+  </section>
+
+  <!-- ==========================================
+       [2] 전용 서브 툴바 영역 (인도자 메뉴 vs 사용자 메뉴 명확 분리)
+       - 2줄 깨짐 방지: flex-nowrap overflow-x-auto shrink-0 적용
+       - 🔒 보기 모드 시: 완전히 숨김 (display: none)
+       ========================================== -->
+
+  <!-- [인도자 전용 툴바] 🎼: 곡 별 진행 Flow [악보 목록] -> [크롭 편집] -> [송폼 순서] -> [스티커 비우기] -> [저장/완료] -->
   <div id="leaderToolbar"
-    class="overflow-x-auto no-scrollbar flex flex-nowrap items-center gap-2 px-3 py-2 border-t shrink-0 select-none"
+    class="overflow-x-auto no-scrollbar flex flex-nowrap items-center gap-2 px-3 py-2 border-t shrink-0 select-none transition-colors"
     style="display:none;border-color:var(--border);background:var(--surface)">
-    <button id="addSongBtn"
-      class="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-sm font-semibold shadow-sm"
-      style="background:var(--accent)">
-      <span class="w-4 h-4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">
-          <path d="M12 5v14M5 12h14" />
-        </svg></span>
-      악보 추가
+
+    <!-- 1. 크롭 편집 (현재 악보 여백 감지 및 세밀 자르기) -->
+    <button id="leaderCropBtn"
+      class="shrink-0 flex items-center gap-1.5 p-2 sm:px-3 sm:py-2 rounded-xl border text-xs sm:text-sm font-semibold active:scale-95 transition-all"
+      style="border-color:var(--border);background:var(--surface-2)" title="현재 악보 여백 감지 및 자르기">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round" class="w-4 h-4">
+        <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+        <path d="M18 22V8a2 2 0 0 0-2-2H2" />
+      </svg>
+      <span class="hidden sm:inline">크롭 편집</span>
     </button>
-    <button id="manageSongBtn"
-      class="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-sm font-semibold"
-      style="border-color:var(--border);background:var(--surface-2)">
-      <span class="w-4 h-4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-          stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">
-          <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-        </svg></span>
-      곡 순서 / 관리
+
+    <!-- 3. 송폼 순서 (곡 연주 진행 순서 지정) -->
+    <button id="leaderSongformBtn"
+      class="shrink-0 flex items-center gap-1.5 p-2 sm:px-3 sm:py-2 rounded-xl border text-xs sm:text-sm font-semibold active:scale-95 transition-all"
+      style="border-color:var(--border);background:var(--surface-2)" title="현재 악보의 연주 송폼 진행 순서 지정">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round" class="w-4 h-4">
+        <path d="M9 18V5l12-2v13" />
+        <circle cx="6" cy="18" r="3" />
+        <circle cx="18" cy="16" r="3" />
+      </svg>
+      <span class="hidden sm:inline">송폼 순서</span>
+    </button>
+
+    <!-- 4. 스티커 비우기 -->
+    <button id="leaderClearStickersBtn"
+      class="shrink-0 flex items-center gap-1.5 p-2 sm:px-2.5 sm:py-2 rounded-xl border text-xs sm:text-sm font-semibold active:scale-95 transition-all text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
+      style="border-color:var(--border)" title="현재 악보의 모든 스티커 제거">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round" class="w-4 h-4">
+        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      </svg>
+      <span class="hidden sm:inline">스티커 비우기</span>
+    </button>
+
+    <!-- 5. 저장 (저장 후 보기 모드 🔒로 전환) -->
+    <button id="leaderSaveDoneBtn"
+      class="shrink-0 ml-auto flex items-center gap-1.5 p-2 sm:px-3.5 sm:py-2 rounded-xl text-white text-xs sm:text-sm font-semibold shadow-sm active:scale-95 transition-all"
+      style="background:var(--accent)" title="저장하고 연주 보기 모드로 전환">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+        stroke-linejoin="round" class="w-4 h-4">
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
+      <span class="hidden sm:inline">저장</span>
     </button>
   </div>
 
-  <!-- ===== 사용자 펜 툴바 (2줄 깨짐 방지: flex-nowrap overflow-x-auto shrink-0) ===== -->
-  <div id="penToolbar"
-    class="overflow-x-auto no-scrollbar flex flex-nowrap items-center gap-3 px-3 py-2 border-t shrink-0 select-none"
+  <!-- [사용자 전용 툴바] ✏️: 개인 펜 드로잉, 굵기/색상, 지우개, 텍스트 메모 -->
+  <div id="userPenToolbar"
+    class="overflow-x-auto no-scrollbar flex flex-nowrap items-center gap-2.5 px-3 py-2 border-t shrink-0 select-none transition-colors"
     style="display:none;border-color:var(--border);background:var(--surface)">
-    <div id="colorSwatches" class="shrink-0 flex items-center gap-1.5"></div>
-    <input id="sizeRange" type="range" min="1" max="14" value="3" class="shrink-0 w-20" title="펜 굵기" />
-    <button id="eraseBtn" class="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl border"
+    <!-- 색상 팔레트 -->
+    <div id="penColorSwatches" class="shrink-0 flex items-center gap-1.5"></div>
+
+    <!-- 펜 굵기 조절 슬라이더 및 크기 미리보기 -->
+    <div class="shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-xl border" style="border-color:var(--border)">
+      <input id="penSizeSlider" type="range" min="1" max="16" value="3" class="w-16 sm:w-20 cursor-pointer"
+        title="펜 굵기 조절" />
+      <span id="penSizePreviewDot" class="w-4 h-4 rounded-full flex items-center justify-center">
+        <span id="penSizeDotInner" class="rounded-full bg-current" style="width:3px;height:3px"></span>
+      </span>
+    </div>
+
+    <!-- 지우개 버튼 -->
+    <button id="penEraserBtn" class="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl border transition-all"
       style="border-color:var(--border)" title="지우개">
-      <span class="w-4.5 h-4.5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-          stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">
-          <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" />
-          <path d="M22 21H7" />
-          <path d="m5 11 9 9" />
-        </svg></span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round" class="w-4.5 h-4.5">
+        <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" />
+        <path d="M22 21H7" />
+        <path d="m5 11 9 9" />
+      </svg>
     </button>
-    <button id="textMemoBtn"
-      class="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-semibold"
+
+    <!-- 현재 곡 개인 필기 지우기 -->
+    <button id="penClearBtn" class="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl border transition-all"
+      style="border-color:var(--border);color:var(--text-dim)" title="현재 곡 필기 전체 지우기">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round" class="w-4.5 h-4.5">
+        <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" />
+      </svg>
+    </button>
+
+    <!-- 텍스트 메모 스티커 추가 -->
+    <button id="userTextMemoBtn"
+      class="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs sm:text-sm font-semibold active:scale-95 transition-all"
       style="border-color:var(--border);background:var(--surface-2)">
-      <span class="w-4 h-4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-          stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">
-          <path d="M4 7V4h16v3" />
-          <path d="M9 20h6" />
-          <path d="M12 4v16" />
-        </svg></span>
-      텍스트 메모
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round" class="w-4 h-4">
+        <path d="M4 7V4h16v3" />
+        <path d="M9 20h6" />
+        <path d="M12 4v16" />
+      </svg>
+      <span>텍스트 메모</span>
     </button>
   </div>
 
-  <!-- ===== 하단 3대 메뉴 Navigation (외곽선 Outline 아이콘 중심, 텍스트 없이 깔끔) ===== -->
-  <nav id="bottomNav" class="shrink-0 flex items-stretch border-t select-none"
-    style="border-color:var(--border);background:var(--surface)">
-    <!-- 1. [인도자 메뉴]: 🎼 지휘봉/악보 외곽선 아이콘 -->
-    <button id="navLeaderBtn" class="flex-1 flex items-center justify-center py-3.5 transition-colors"
-      title="인도자 메뉴 (악보/송폼/순서)">
-      <span class="w-6 h-6 flex items-center justify-center">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-          stroke-linejoin="round" class="w-full h-full">
-          <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
-          <path d="M8 7h8" />
-          <path d="M8 11h5" />
-          <path d="m14 18 6-6" />
-          <circle cx="20" cy="12" r="1" />
-        </svg>
-      </span>
+  <!-- ==========================================
+       [2] 하단 4대 메뉴 Navigation (슬림형 h-12, 아이콘 여백 최소화)
+       1. [사용자 메뉴]: 🎼 악보 아이콘
+       2. [인도자 메뉴]: 👑/지휘봉 콘티 아이콘
+       3. [곡 목록 (보관함)]: 📚 세워진 책들 아이콘
+       4. [설정 메뉴]: ⚙️ 톱니바퀴 아이콘
+       ========================================== -->
+  <nav id="bottomNav" class="shrink-0 flex items-stretch border-t select-none transition-colors"
+    style="border-color:var(--border);background:var(--surface);height:calc(48px + env(safe-area-inset-bottom, 0px));padding-bottom:env(safe-area-inset-bottom, 0px)">
+
+    <!-- 1. [사용자 메뉴] -->
+    <button id="navUserBtn" class="nav-btn active flex-1 flex flex-col items-center justify-center py-1 transition-all"
+      title="사용자 메뉴" aria-label="사용자 메뉴">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round" class="w-5 h-5">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <circle cx="9" cy="15.5" r="1.8" />
+        <path d="M10.8 15.5V10.5l4-1v4" />
+        <circle cx="14.8" cy="13.5" r="1.8" />
+      </svg>
+      <span class="text-[10px] font-semibold mt-0.5 leading-none">사용자</span>
     </button>
-    <!-- 2. [사용자 메뉴]: ✏️ 연필/노트 외곽선 아이콘 -->
-    <button id="navUserBtn" class="flex-1 flex items-center justify-center py-3.5 transition-colors"
-      title="사용자 메뉴 (개인 필기/메모)">
-      <span class="w-6 h-6 flex items-center justify-center">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-          stroke-linejoin="round" class="w-full h-full">
-          <path d="M12 20h9" />
-          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-        </svg>
-      </span>
+
+    <!-- 2. [인도자 메뉴] -->
+    <button id="navLeaderBtn" class="nav-btn flex-1 flex flex-col items-center justify-center py-1 transition-all"
+      title="인도자 메뉴" aria-label="인도자 메뉴">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round" class="w-5 h-5">
+        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
+        <path d="M8 7h8" />
+        <path d="M8 11h5" />
+        <path d="m14 18 6-6" />
+        <circle cx="20" cy="12" r="1" />
+      </svg>
+      <span class="text-[10px] font-semibold mt-0.5 leading-none">인도자</span>
     </button>
-    <!-- 3. [설정 메뉴]: ⚙️ 톱니바퀴 외곽선 아이콘 -->
-    <button id="navSettingsBtn" class="flex-1 flex items-center justify-center py-3.5 transition-colors"
-      title="설정 메뉴 (테마/넘김방향/송폼관리)">
-      <span class="w-6 h-6 flex items-center justify-center">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-          stroke-linejoin="round" class="w-full h-full">
-          <circle cx="12" cy="12" r="3" />
-          <path
-            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
-        </svg>
-      </span>
+
+    <!-- 3. [곡 목록 (악보 보관함)]: 세워진 책들 아이콘 (📚) -->
+    <button id="navSongLibraryBtn" class="nav-btn flex-1 flex flex-col items-center justify-center py-1 transition-all"
+      title="곡 목록 (악보 보관함)" aria-label="곡 목록 보관함">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round" class="w-5 h-5">
+        <!-- 세워진 책들 모양 -->
+        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H8v20H6.5A2.5 2.5 0 0 1 4 19.5Z" />
+        <path d="M8 2h4v20H8" />
+        <path d="M12 2h3.5a2.5 2.5 0 0 1 2.5 2.5v15a2.5 2.5 0 0 1-2.5 2.5H12" />
+        <path d="M18 4l2.5 15.5" />
+      </svg>
+      <span class="text-[10px] font-semibold mt-0.5 leading-none">곡 목록</span>
+    </button>
+
+    <!-- 4. [설정 메뉴] -->
+    <button id="navSettingsBtn" class="nav-btn flex-1 flex flex-col items-center justify-center py-1 transition-all"
+      title="설정 메뉴" aria-label="설정 메뉴">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+        stroke-linejoin="round" class="w-5 h-5">
+        <circle cx="12" cy="12" r="3" />
+        <path
+          d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+      </svg>
+      <span class="text-[10px] font-semibold mt-0.5 leading-none">설정</span>
     </button>
   </nav>
 
-  <!-- 파일 업로드 인풋 -->
+  <!-- 숨김 파일 업로드 인풋 -->
   <input type="file" id="fileInput" accept="image/*" class="hidden" />
 
-  <!-- ===== Crop 모달 (대형 미리보기 UI & Auto/Manual Crop 선택) ===== -->
-  <div id="cropModal" class="fixed inset-0 z-[60] flex flex-col select-none" style="display:none;background:var(--bg)">
-    <!-- 모달 상단 탭 -->
-    <div class="flex items-center gap-2 p-3 shrink-0 border-b" style="border-color:var(--border)">
-      <button id="cropAutoBtn" class="flex-1 py-2.5 rounded-xl font-semibold border-2 transition-all">Auto-Crop</button>
-      <button id="cropManualBtn" class="flex-1 py-2.5 rounded-xl font-semibold border-2 transition-all">Manual-Crop</button>
+  <!-- ==========================================
+       [4] 악보 등록 시 Crop 방식 선택 및 대형 미리보기 모달
+       - 상단: [Auto-Crop] 버튼 및 [Manual-Crop] 버튼
+       - 중앙: 단색 여백 픽셀 감지가 적용된 대형 미리보기 UI
+       - 수동 선택 시 4개 모서리 조절 핸들 드래그 조정 가능
+       ========================================== -->
+  <div id="cropModal" class="fixed inset-0 z-50 flex flex-col select-none" style="display:none;background:var(--bg)">
+    <!-- 모달 상단 탭 헤더 -->
+    <div class="flex items-center justify-between px-3.5 sm:px-4 py-2.5 sm:py-3 border-b shrink-0 gap-2"
+      style="border-color:var(--border);background:var(--surface)">
+      <h2 class="font-bold text-sm sm:text-base whitespace-nowrap truncate">악보 여백 자르기</h2>
+      <!-- Auto vs Manual 선택 버튼 -->
+      <div class="flex items-center gap-1 p-1 rounded-xl shrink-0" style="background:var(--surface-2)">
+        <button id="cropAutoTabBtn"
+          class="px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm">Auto</button>
+        <button id="cropManualTabBtn"
+          class="px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all">Manual</button>
+      </div>
     </div>
 
     <!-- 모달 중앙: 대형 미리보기 (Preview) 영역 -->
-    <div class="flex-1 overflow-auto flex items-center justify-center p-3 min-h-0 bg-black/5 dark:bg-black/30">
-      <div id="cropStage" class="relative inline-block leading-none shadow-lg rounded-lg overflow-hidden">
-        <img id="cropDisplayImg" class="block max-w-[92vw] max-h-[66vh] object-contain select-none pointer-events-none"
-          draggable="false" alt="크롭 미리보기" />
-        <!-- 수동 크롭 조절 박스 -->
-        <div id="cropBox" class="absolute border-2" style="display:none;border-color:var(--accent)">
-          <div class="crop-handle" data-corner="tl" style="left:0;top:0;transform:translate(-50%,-50%)"></div>
-          <div class="crop-handle" data-corner="tr" style="left:100%;top:0;transform:translate(-50%,-50%)"></div>
-          <div class="crop-handle" data-corner="bl" style="left:0;top:100%;transform:translate(-50%,-50%)"></div>
-          <div class="crop-handle" data-corner="br" style="left:100%;top:100%;transform:translate(-50%,-50%)"></div>
+    <div
+      class="flex-1 overflow-hidden flex items-center justify-center p-3 sm:p-5 min-h-0 bg-neutral-900/10 dark:bg-black/50">
+      <div id="cropStage"
+        class="relative inline-block leading-none shadow-2xl rounded-lg overflow-visible border border-black/10 dark:border-white/10 max-w-[95vw] max-h-[70vh]">
+        <!-- 대형 미리보기 이미지 -->
+        <img id="cropDisplayImg" class="block max-w-[94vw] max-h-[68vh] object-contain select-none pointer-events-none rounded-lg"
+          draggable="false" alt="악보 크롭 미리보기" />
+
+        <!-- [4. 수동 크롭 조절 박스: 4개 모서리 + 4개 변 중앙 조절 핸들] -->
+        <div id="cropBox" class="absolute border-2 transition-none" style="display:none;border-color:var(--accent)">
+          <!-- 실시간 비율 & 크기 뱃지 -->
+          <div id="cropRatioBadge" class="crop-ratio-badge"></div>
+
+          <!-- 4개 모서리 조절 핸들 -->
+          <div class="crop-handle crop-handle-corner" data-corner="tl" style="left:0;top:0;transform:translate(-50%,-50%)" title="좌상단 조절"></div>
+          <div class="crop-handle crop-handle-corner" data-corner="tr" style="left:100%;top:0;transform:translate(-50%,-50%)" title="우상단 조절"></div>
+          <div class="crop-handle crop-handle-corner" data-corner="bl" style="left:0;top:100%;transform:translate(-50%,-50%)" title="좌하단 조절"></div>
+          <div class="crop-handle crop-handle-corner" data-corner="br" style="left:100%;top:100%;transform:translate(-50%,-50%)" title="우하단 조절"></div>
+
+          <!-- 4개 변 중앙 조절 핸들 -->
+          <div class="crop-handle crop-handle-edge" data-edge="top" style="left:50%;top:0;transform:translate(-50%,-50%)" title="상단 여백 조절"></div>
+          <div class="crop-handle crop-handle-edge" data-edge="bottom" style="left:50%;top:100%;transform:translate(-50%,-50%)" title="하단 여백 조절"></div>
+          <div class="crop-handle crop-handle-edge" data-edge="left" style="left:0;top:50%;transform:translate(-50%,-50%)" title="좌측 여백 조절"></div>
+          <div class="crop-handle crop-handle-edge" data-edge="right" style="left:100%;top:50%;transform:translate(-50%,-50%)" title="우측 여백 조절"></div>
         </div>
       </div>
     </div>
 
-    <!-- 모달 하단 버튼 -->
-    <div class="flex gap-2 p-3 shrink-0 border-t" style="border-color:var(--border);background:var(--surface)">
-      <button id="cropCancelBtn" class="flex-1 py-2.5 rounded-xl border font-semibold"
-        style="border-color:var(--border);background:var(--surface-2)">취소</button>
-      <button id="cropApplyBtn" class="flex-1 py-2.5 rounded-xl text-white font-semibold shadow-sm"
-        style="background:var(--accent)">적용하기</button>
+    <!-- 안내 가이드 문구 -->
+    <div class="px-4 py-1.5 text-center text-xs" style="color:var(--text-dim);background:var(--bg)">
+      <span id="cropHintText">Auto-Crop: 외곽 여백을 자동으로 정밀 분석하여 잘라냈습니다.</span>
+    </div>
+
+    <!-- 모달 하단 버튼 바 -->
+    <div class="flex gap-2.5 p-3.5 shrink-0 border-t" style="border-color:var(--border);background:var(--surface)">
+      <button id="cropCancelBtn" class="flex-1 py-3 rounded-xl border font-semibold text-sm transition-all"
+        style="border-color:var(--border);background:var(--surface-2)">
+        취소
+      </button>
+      <button id="cropApplyBtn"
+        class="flex-1 py-3 rounded-xl text-white font-semibold text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5"
+        style="background:var(--accent)">
+        <span>다음: 비율 조정</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-4 h-4">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+      </button>
     </div>
   </div>
 
-  <!-- ===== 곡 순서 / 관리 모달 ===== -->
+  <!-- ==========================================
+       [악보 등록 2단계] 악보 비율 조정 모달
+       ========================================== -->
+  <div id="ratioModal" class="fixed inset-0 z-50 flex flex-col select-none" style="display:none;background:var(--bg)">
+    <!-- 모달 상단 헤더 -->
+    <div class="flex items-center justify-between px-3.5 sm:px-4 py-2.5 sm:py-3 border-b shrink-0 gap-2"
+      style="border-color:var(--border);background:var(--surface)">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="px-2 py-0.5 rounded text-[11px] font-bold text-white shrink-0" style="background:var(--accent)">2 /
+          3 단계</span>
+        <h2 class="font-bold text-sm sm:text-base whitespace-nowrap truncate">악보 비율 조정</h2>
+      </div>
+      <button id="ratioResetBtn" type="button"
+        class="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+        style="border-color:var(--border);color:var(--text-dim)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
+        </svg>
+        <span>원본(1:1) 리셋</span>
+      </button>
+    </div>
+
+    <!-- 모달 중앙: 대형 실시간 미리보기 영역 -->
+    <div
+      class="flex-1 overflow-hidden flex items-center justify-center p-3 sm:p-5 min-h-0 bg-neutral-900/10 dark:bg-black/50">
+      <div id="ratioStage"
+        class="relative flex items-center justify-center shadow-2xl rounded-lg overflow-visible border-2 border-dashed max-w-[95vw] max-h-[58vh] bg-neutral-800/20"
+        style="border-color:var(--accent)">
+        <!-- 캔버스로 실시간 비율 조절된 이미지 렌더링 -->
+        <canvas id="ratioCanvas" class="block max-w-[94vw] max-h-[56vh] object-contain rounded"></canvas>
+
+        <!-- 4개 변 중앙 조절 핸들 -->
+        <div class="ratio-handle" data-edge="top" style="left:50%;top:0;transform:translate(-50%,-50%)" title="세로 배율 조절 (상단)"></div>
+        <div class="ratio-handle" data-edge="bottom" style="left:50%;top:100%;transform:translate(-50%,-50%)" title="세로 배율 조절 (하단)"></div>
+        <div class="ratio-handle" data-edge="left" style="left:0;top:50%;transform:translate(-50%,-50%)" title="가로 배율 조절 (좌측)"></div>
+        <div class="ratio-handle" data-edge="right" style="left:100%;top:50%;transform:translate(-50%,-50%)" title="가로 배율 조절 (우측)"></div>
+      </div>
+    </div>
+
+    <!-- 안내 가이드 문구 -->
+    <div class="px-4 py-1.5 text-center text-xs shrink-0 flex items-center justify-center gap-1.5" style="color:var(--text-dim);background:var(--bg)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5" style="color:var(--accent)">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+      </svg>
+      <span>악보 각 변의 중앙 핸들을 드래그하여 가로·세로 폭을 조절하세요.</span>
+    </div>
+
+    <!-- 하단 조절 패널 (현재 가로/세로/비율 정보) -->
+    <div class="px-4 py-2.5 shrink-0 border-t flex flex-col items-center"
+      style="border-color:var(--border);background:var(--surface)">
+      <!-- 가로 / 세로 / 비율 수직 정렬 디스플레이 -->
+      <div class="flex items-center justify-center gap-2 sm:gap-3 w-full max-w-md">
+        <div class="flex-1 flex flex-col items-center justify-center py-2 px-2 rounded-xl border text-center"
+          style="border-color:var(--border);background:var(--surface-2)">
+          <span class="text-xs font-semibold" style="color:var(--text-dim)">가로</span>
+          <span id="ratioWidthVal" class="text-base font-extrabold mt-0.5" style="color:var(--accent)">100%</span>
+        </div>
+        <div class="flex-1 flex flex-col items-center justify-center py-2 px-2 rounded-xl border text-center"
+          style="border-color:var(--border);background:var(--surface-2)">
+          <span class="text-xs font-semibold" style="color:var(--text-dim)">세로</span>
+          <span id="ratioHeightVal" class="text-base font-extrabold mt-0.5" style="color:var(--accent)">100%</span>
+        </div>
+        <div class="flex-1 flex flex-col items-center justify-center py-2 px-2 rounded-xl border text-center"
+          style="border-color:var(--border);background:var(--surface-2)">
+          <span class="text-xs font-semibold" style="color:var(--text-dim)">비율</span>
+          <span id="ratioAspectVal" class="text-sm font-extrabold mt-0.5" style="color:var(--text)">1 : 1.41</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 모달 하단 버튼 바 -->
+    <div class="flex gap-2.5 p-3.5 shrink-0 border-t" style="border-color:var(--border);background:var(--surface)">
+      <button id="ratioPrevBtn" type="button"
+        class="flex-1 py-3 rounded-xl border font-semibold text-sm transition-all flex items-center justify-center gap-1.5"
+        style="border-color:var(--border);background:var(--surface-2)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-4 h-4">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+        <span>이전 (크롭)</span>
+      </button>
+      <button id="ratioNextBtn" type="button"
+        class="flex-1 py-3 rounded-xl text-white font-semibold text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5"
+        style="background:var(--accent)">
+        <span>다음: 곡 정보 입력</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-4 h-4">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       [인도자 도구] 악보 목록 & 순서 관리 모달
+       ========================================== -->
   <div id="songManagerModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center select-none"
     style="display:none">
-    <div class="absolute inset-0 bg-black/50" data-close-song-manager></div>
-    <div class="relative w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl flex flex-col shadow-2xl"
-      style="max-height:80vh;background:var(--surface)">
-      <div class="flex items-center justify-between px-4 py-3 border-b" style="border-color:var(--border)">
-        <h2 class="font-bold text-base">악보 목록 & 순서 변경</h2>
-        <button data-close-song-manager class="p-1 w-6 h-6">
+    <div class="absolute inset-0 modal-backdrop" data-close-song-manager></div>
+    <div class="relative w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl flex flex-col shadow-2xl overflow-hidden z-10"
+      style="max-height:82vh;background:var(--surface)">
+      <div class="flex items-center justify-between px-4 py-3.5 border-b" style="border-color:var(--border)">
+        <div>
+          <h2 class="font-bold text-base">악보 목록 & 순서 변경</h2>
+          <p class="text-xs mt-0.5" style="color:var(--text-dim)">카드 좌측 ☰ 핸들을 잡고 끌어서 순서를 변경하세요</p>
+        </div>
+        <button data-close-song-manager class="p-1.5 w-8 h-8 rounded-lg hover:bg-black/5 dark:hover:bg-white/5">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
             stroke-linejoin="round" class="w-full h-full">
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
         </button>
       </div>
-      <div id="songManagerList" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
-      <div class="p-3 border-t" style="border-color:var(--border)">
+
+      <!-- 상단 악보 추가 액션 바 (악보 리스트 보면서 즉시 추가) -->
+      <div class="px-3 pt-3 pb-1 border-b flex items-center justify-between gap-2" style="border-color:var(--border)">
+        <span class="text-xs font-semibold" style="color:var(--text-dim)">등록된 악보</span>
         <button id="songManagerAddBtn"
-          class="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white font-semibold shadow-sm"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white font-semibold text-xs shadow-sm active:scale-95 transition-all"
+          style="background:var(--accent)" title="새 악보 파일 추가">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" class="w-3.5 h-3.5">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          <span>새 악보 추가</span>
+        </button>
+      </div>
+
+      <!-- 악보 카드 리스트 (좌측 ☰ 3선 드래그 앤 드롭 지원) -->
+      <div id="songManagerList" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       [인도자 도구] 곡 별 송폼 순서(Flow) 스텝 바이 스텝 지정 모달
+       - A1 입력 -> 다음 -> A1 > 생기고 A2 입력하는 형태
+       ========================================== -->
+  <div id="songformOrderModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center select-none"
+    style="display:none">
+    <div class="absolute inset-0 modal-backdrop" data-close-songform-order></div>
+    <div class="relative w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl flex flex-col shadow-2xl overflow-hidden z-10"
+      style="max-height:85vh;background:var(--surface)">
+      <!-- 헤더 -->
+      <div class="flex items-center justify-between px-4 py-3.5 border-b" style="border-color:var(--border)">
+        <div>
+          <h2 class="font-bold text-base">송폼 진행 순서 입력</h2>
+          <p id="songformOrderSongTitle" class="text-xs mt-0.5" style="color:var(--text-dim)">현재 악보의 연주 진행 순서를 구성하세요</p>
+        </div>
+        <button data-close-songform-order class="p-1.5 w-8 h-8 rounded-lg hover:bg-black/5 dark:hover:bg-white/5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+            stroke-linejoin="round" class="w-full h-full">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- 본문 -->
+      <div class="p-4 space-y-4 overflow-y-auto">
+        <!-- 1. 스텝 입력창: A1 입력 후 [다음] 클릭 시 A1 > 생성 -->
+        <div>
+          <label class="block text-xs font-semibold mb-1.5" style="color:var(--text-dim)">
+            순서 직접 입력 (입력 후 [다음] 클릭 또는 Enter)
+          </label>
+          <div class="flex items-center gap-2">
+            <input id="songformStepInput" type="text" maxlength="12" placeholder="예: A1, A2, B, Out"
+              class="flex-1 px-3.5 py-2.5 rounded-xl border text-sm font-bold outline-none focus:ring-2 transition-all"
+              style="border-color:var(--border);background:var(--surface-2);color:var(--text)" />
+            <button id="songformMultiplyBtn" type="button"
+              class="shrink-0 w-11 h-11 rounded-xl border flex items-center justify-center text-lg font-bold shadow-sm active:scale-95 hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all select-none"
+              style="border-color:var(--border);background:var(--surface-2);color:var(--text)"
+              title="× (반복 횟수) 기호 삽입">
+              ×
+            </button>
+            <button id="songformStepNextBtn"
+              class="shrink-0 px-4 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all flex items-center gap-1"
+              style="background:var(--accent)">
+              <span>다음</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-3.5 h-3.5">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. 빠른 파트 칩 추가 바 -->
+        <div>
+          <p class="text-xs font-semibold mb-1.5" style="color:var(--text-dim)">빠른 파트 칩 추가</p>
+          <div id="songformPickerChips" class="flex flex-wrap gap-1.5"></div>
+        </div>
+
+        <!-- 3. 현재 구성된 송폼 순서 체인 (A1 > A2 > B ...) -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <p class="text-xs font-semibold" style="color:var(--text-dim)">현재 진행 순서 (칩 탭 시 개별 삭제)</p>
+            <button id="songformClearFlowBtn" class="text-xs text-red-500 hover:underline">전체 비우기</button>
+          </div>
+          <div id="songformFlowList" class="flex flex-wrap items-center gap-1.5 p-3 rounded-xl border min-h-[58px]"
+            style="border-color:var(--border);background:var(--surface-2)">
+            <span id="songformFlowEmptyHint" class="text-xs" style="color:var(--text-dim)">입력 후 [다음]을 누르면 순서가
+              연결됩니다</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 하단 버튼 -->
+      <div class="p-3 border-t flex gap-2" style="border-color:var(--border)">
+        <button id="songformOrderApplyBtn"
+          class="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all"
           style="background:var(--accent)">
-          <span class="w-4 h-4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">
-              <path d="M12 5v14M5 12h14" />
-            </svg></span>
-          악보 추가
+          순서 적용 및 저장
         </button>
       </div>
     </div>
   </div>
 
-  <!-- ===== 설정 모달 (테마/곡넘김방향/송폼관리/클라우드) ===== -->
+  <!-- ==========================================
+       [인도자 도구] 새 콘티 만들기 / 수정 모달
+       ========================================== -->
+  <div id="contiModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center select-none"
+    style="display:none">
+    <div class="absolute inset-0 modal-backdrop" data-close-conti-modal></div>
+    <div class="relative w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl flex flex-col shadow-2xl overflow-hidden z-10"
+      style="background:var(--surface)">
+      <div class="flex items-center justify-between px-4 py-3.5 border-b" style="border-color:var(--border)">
+        <h2 id="contiModalTitle" class="font-bold text-base">새 예배 콘티</h2>
+        <button data-close-conti-modal class="p-1.5 w-8 h-8 rounded-lg hover:bg-black/5 dark:hover:bg-white/5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-full h-full">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="p-4 space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">콘티 제목 *</label>
+          <input id="contiTitleInput" type="text" placeholder="예: 10월 18일 주일 1부 예배"
+            class="w-full px-3.5 py-2.5 rounded-xl border text-sm font-semibold outline-none focus:ring-2"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">예배 일자</label>
+          <input id="contiDateInput" type="date"
+            class="w-full px-3.5 py-2.5 rounded-xl border text-sm font-semibold outline-none focus:ring-2"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">콘티 메모 / 공지</label>
+          <input id="contiMemoInput" type="text" placeholder="예: 특송 후 바로 연결 / 키 E -> F 전조"
+            class="w-full px-3.5 py-2.5 rounded-xl border text-sm font-semibold outline-none focus:ring-2"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" />
+        </div>
+      </div>
+      <div class="p-3 border-t flex gap-2" style="border-color:var(--border)">
+        <button id="contiSaveBtn"
+          class="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all"
+          style="background:var(--accent)">
+          콘티 저장하기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       [6] 설정 모달 (화면 테마 / 곡 넘김 방향 / 송폼 파트 관리 / Google Drive)
+       ========================================== -->
   <div id="settingsModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center select-none"
     style="display:none">
-    <div class="absolute inset-0 bg-black/50" data-close-settings></div>
-    <div class="relative w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl overflow-y-auto shadow-2xl"
-      style="max-height:85vh;background:var(--surface)">
-      <div class="flex items-center justify-between px-4 py-3 border-b sticky top-0 z-10"
+    <div class="absolute inset-0 modal-backdrop" data-close-settings></div>
+    <div
+      class="relative w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl overflow-y-auto shadow-2xl z-10 no-scrollbar max-h-[85vh]"
+      style="background:var(--surface)">
+      <!-- 모달 헤더 -->
+      <div class="flex items-center justify-between px-4 py-3.5 border-b sticky top-0 z-10"
         style="border-color:var(--border);background:var(--surface)">
-        <h2 class="font-bold text-base">설정</h2>
-        <button data-close-settings class="p-1 w-6 h-6">
+        <h2 class="font-bold text-base">환경 설정</h2>
+        <button data-close-settings class="p-1.5 w-8 h-8 rounded-lg hover:bg-black/5 dark:hover:bg-white/5">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
             stroke-linejoin="round" class="w-full h-full">
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
         </button>
       </div>
+
       <div class="p-4 space-y-6">
-        <!-- 테마 설정 -->
+        <!-- [6. 테마 설정: 시스템(기본값) / 라이트 / 다크] -->
         <section>
-          <h3 class="text-sm font-semibold mb-2" style="color:var(--text-dim)">화면 테마</h3>
-          <div class="flex gap-2">
-            <button id="themeLightBtn" class="flex-1 py-2.5 rounded-xl border font-medium transition-all">라이트</button>
-            <button id="themeDarkBtn" class="flex-1 py-2.5 rounded-xl border font-medium transition-all">다크</button>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-bold">화면 테마</h3>
+            <span class="text-xs" style="color:var(--text-dim)">악보만 스마트 반전</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <button id="themeSystemBtn"
+              class="flex flex-col items-center gap-1.5 p-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all">
+              <div class="w-full h-7 rounded-lg border flex items-center justify-center text-[11px]"
+                style="background:linear-gradient(135deg, #F9F6F0 50%, #0F0E13 50%);color:var(--text);border-color:var(--border)">
+                Auto
+              </div>
+              <span>시스템</span>
+            </button>
+            <button id="themeLightBtn"
+              class="flex flex-col items-center gap-1.5 p-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all">
+              <div class="w-full h-7 rounded-lg border flex items-center justify-center text-[11px]"
+                style="background:#F9F6F0;color:#2B2730;border-color:#E4DDD0">
+                Beige
+              </div>
+              <span>라이트</span>
+            </button>
+            <button id="themeDarkBtn"
+              class="flex flex-col items-center gap-1.5 p-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all">
+              <div class="w-full h-7 rounded-lg border flex items-center justify-center text-[11px]"
+                style="background:#0F0E13;color:#F3F1F7;border-color:#322E3D">
+                Black
+              </div>
+              <span>다크</span>
+            </button>
           </div>
         </section>
 
-        <!-- 곡 넘김 방향 -->
-        <section>
-          <h3 class="text-sm font-semibold mb-2" style="color:var(--text-dim)">곡 넘김 방향</h3>
-          <div class="flex gap-2">
-            <button id="navHBtn" class="flex-1 py-2.5 rounded-xl border font-medium transition-all">좌우</button>
-            <button id="navVBtn" class="flex-1 py-2.5 rounded-xl border font-medium transition-all">상하</button>
+        <!-- [6. 곡 넘김 방향 옵션: 단순하게 [좌우] vs [상하] 2가지 토글] -->
+        <section class="flex items-center justify-between gap-3">
+          <h3 class="text-sm font-bold shrink-0">곡 넘김 방향</h3>
+          <div class="flex items-center gap-2 shrink-0">
+            <button id="navHBtn" class="px-3 sm:px-3.5 py-2 rounded-xl border font-semibold text-xs sm:text-sm active:scale-95 transition-all">
+              좌우 (가로)
+            </button>
+            <button id="navVBtn" class="px-3 sm:px-3.5 py-2 rounded-xl border font-semibold text-xs sm:text-sm active:scale-95 transition-all">
+              상하 (세로)
+            </button>
           </div>
         </section>
 
-        <!-- 송폼 파트 관리 -->
+        <!-- [5. 송폼 파트 커스텀 추가/삭제 관리 기능] -->
         <section>
-          <h3 class="text-sm font-semibold mb-2" style="color:var(--text-dim)">송폼 파트 관리</h3>
-          <div id="songformManageList" class="flex flex-wrap gap-2 mb-3"></div>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-bold">송폼 파트 칩 관리</h3>
+            <span class="text-xs" style="color:var(--text-dim)">상단 고정 칩 목록</span>
+          </div>
+          <div id="songformManageList" class="flex flex-wrap gap-2 p-2.5 rounded-xl border min-h-[50px] mb-2.5"
+            style="border-color:var(--border);background:var(--surface-2)"></div>
           <div class="flex gap-2">
-            <input id="newLabelInput" maxlength="6" placeholder="새 파트명 (예: Chorus)"
-              class="flex-1 px-3 py-2 rounded-xl border bg-transparent text-sm" style="border-color:var(--border)" />
-            <button id="addLabelBtn" class="px-4 rounded-xl text-white text-sm font-semibold"
-              style="background:var(--accent)">추가</button>
+            <input id="newLabelInput" maxlength="6" placeholder="새 파트명 (예: Interlude)"
+              class="flex-1 px-3 py-2 rounded-xl border bg-transparent text-sm focus:outline-none focus:ring-2"
+              style="border-color:var(--border)" />
+            <button id="addLabelBtn" class="px-4 rounded-xl text-white text-sm font-semibold shrink-0 shadow-sm"
+              style="background:var(--accent)">
+              추가
+            </button>
+          </div>
+          <p class="text-[11px] mt-1.5" style="color:var(--text-dim)">
+            * 'I' 파트는 숫자 1과 혼동되지 않도록 고유 세리프 폰트로 자동 표시됩니다.
+          </p>
+        </section>
+
+        <!-- [곡 주제(Theme) 태그 목록 관리 섹션] -->
+        <section>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-bold">곡 주제(Theme) 태그 관리</h3>
+            <span class="text-xs" style="color:var(--text-dim)">악보 분류 태그</span>
+          </div>
+          <div id="themeManageList" class="flex flex-wrap gap-2 p-2.5 rounded-xl border min-h-[50px] mb-2.5"
+            style="border-color:var(--border);background:var(--surface-2)"></div>
+          <div class="flex gap-2">
+            <input id="newThemeInput" maxlength="10" placeholder="새 주제 (예: 부활, 성탄)"
+              class="flex-1 px-3 py-2 rounded-xl border bg-transparent text-sm focus:outline-none focus:ring-2"
+              style="border-color:var(--border)" />
+            <button id="addThemeBtn" class="px-4 rounded-xl text-white text-sm font-semibold shrink-0 shadow-sm"
+              style="background:var(--accent)">
+              추가
+            </button>
           </div>
         </section>
 
-        <!-- Google Drive 클라우드 연동 -->
+        <!-- [7. Google Drive REST API v3 / GIS 클라우드 연동 mock & UI] -->
         <section>
-          <h3 class="text-sm font-semibold mb-2" style="color:var(--text-dim)">Google Drive 클라우드 연동</h3>
-          <button id="driveConnectBtn" class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border"
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-bold">Google Drive 클라우드 연동</h3>
+            <span class="text-xs" style="color:var(--text-dim)">콘티 및 필기 백업</span>
+          </div>
+          <button id="driveConnectBtn"
+            class="w-full flex items-center justify-center gap-2 py-3 rounded-xl border font-semibold text-sm transition-all"
             style="border-color:var(--border);background:var(--surface-2)">
-            <span class="w-4.5 h-4.5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                stroke-linecap="round" stroke-linejoin="round" class="w-full h-full">
-                <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
-              </svg></span>
-            <span id="driveStatus">Google 드라이브 연동하기</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+              stroke-linejoin="round" class="w-5 h-5">
+              <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+            </svg>
+            <span id="driveStatusText">Google 드라이브 연결</span>
           </button>
         </section>
+
+        <!-- [8. PWA 앱 설치하기 (홈 화면 바로가기)] -->
+        <section id="pwaInstallSection">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-bold">기기에 앱 설치</h3>
+            <span class="text-xs" style="color:var(--text-dim)">독립 실행형 앱</span>
+          </div>
+          <button id="pwaInstallBtn"
+            class="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all shadow-sm active:scale-95 text-white"
+            style="background:var(--accent)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" class="w-5 h-5">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span id="pwaInstallBtnText">ContiNote 앱 설치하기</span>
+          </button>
+          <p id="pwaInstallHint" class="text-[11px] mt-1.5 leading-relaxed" style="color:var(--text-dim)">
+            * 브라우저 주소창 없이 전체 화면 독립 앱으로 실행되어 악보 열람에 최적화됩니다.
+          </p>
+        </section>
       </div>
     </div>
   </div>
 
-  <!-- ===== 텍스트 메모 모달 ===== -->
-  <div id="textMemoModal" class="fixed inset-0 z-50 flex items-center justify-center p-6 select-none"
+  <!-- ==========================================
+       [사용자 도구] 텍스트 메모 입력 모달
+       ========================================== -->
+  <div id="textMemoModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
     style="display:none">
-    <div class="absolute inset-0 bg-black/50" data-close-textmemo></div>
-    <div class="relative w-full max-w-sm rounded-2xl p-4 shadow-2xl" style="background:var(--surface)">
-      <h2 class="font-bold mb-3 text-base">텍스트 메모</h2>
-      <textarea id="textMemoInput" rows="3" class="w-full px-3 py-2 rounded-xl border bg-transparent text-sm"
-        style="border-color:var(--border)" placeholder="악보에 부착할 메모를 입력하세요"></textarea>
+    <div class="absolute inset-0 modal-backdrop" data-close-textmemo></div>
+    <div class="relative w-full max-w-sm rounded-2xl p-4 shadow-2xl z-10" style="background:var(--surface)">
+      <h2 class="font-bold mb-2 text-base">악보 텍스트 메모 부착</h2>
+      <p class="text-xs mb-3" style="color:var(--text-dim)">악보 위에 투명한 배경의 볼드 텍스트로 배치됩니다</p>
+      <textarea id="textMemoInput" rows="3"
+        class="w-full px-3 py-2 rounded-xl border bg-transparent text-sm focus:outline-none focus:ring-2 resize-none"
+        style="border-color:var(--border);font-family:'Noto Sans KR',sans-serif;font-weight:700"
+        placeholder="예: 2절 후렴 직전 드럼 빌드업"></textarea>
       <div class="flex gap-2 mt-3">
-        <button data-close-textmemo class="flex-1 py-2 rounded-xl border font-semibold"
-          style="border-color:var(--border);background:var(--surface-2)">취소</button>
-        <button id="textMemoAddBtn" class="flex-1 py-2 rounded-xl text-white font-semibold shadow-sm"
-          style="background:var(--accent)">부착하기</button>
+        <button data-close-textmemo class="flex-1 py-2.5 rounded-xl border font-semibold text-sm"
+          style="border-color:var(--border);background:var(--surface-2)">
+          취소
+        </button>
+        <button id="textMemoAddBtn" class="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm"
+          style="background:var(--accent)">
+          악보에 부착
+        </button>
       </div>
     </div>
   </div>
 
-  <script>
-    /* ==================================================
-       ContiNote (콘티노트) - Vanilla JS 단일 파일 앱
-       ================================================== */
+  <!-- ==========================================
+       [인도자 도구] 콘티 공유 모달 (이메일 공유 & 공유 링크)
+       ========================================== -->
+  <div id="shareModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 select-none" style="display:none">
+    <div class="absolute inset-0 modal-backdrop" data-close-share-modal></div>
+    <div class="relative w-full max-w-sm rounded-2xl p-4 shadow-2xl z-10 space-y-4 max-h-[85vh] overflow-y-auto"
+      style="background:var(--surface)">
+      <div class="flex items-center justify-between border-b pb-3 sticky top-0 z-10"
+        style="border-color:var(--border);background:var(--surface)">
+        <div>
+          <h2 class="font-bold text-base">콘티 공유하기</h2>
+          <p id="shareContiTitle" class="text-xs truncate font-semibold mt-0.5" style="color:var(--accent)">주일 1부 예배</p>
+        </div>
+        <button data-close-share-modal class="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-5 h-5">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
 
-    const ICON = {
-      up: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M18 15l-6-6-6 6"/></svg>`,
-      down: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M6 9l6 6 6-6"/></svg>`,
-      edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
-      trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-full h-full"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>`,
-    };
+      <!-- 찬양팀원 Google 이메일 추가 -->
+      <div>
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">찬양팀원 Google 계정 이메일</label>
+        <div class="flex gap-2">
+          <input id="shareEmailInput" type="email" placeholder="예: worship@gmail.com"
+            class="flex-1 px-3 py-2 rounded-xl border bg-transparent text-sm outline-none focus:ring-2"
+            style="border-color:var(--border)" />
+          <button id="addShareEmailBtn" class="px-3 py-2 rounded-xl text-white font-semibold text-xs shrink-0 shadow-sm"
+            style="background:var(--accent)">
+            공유 추가
+          </button>
+        </div>
+      </div>
 
-    /* ---------- 상태 관리 ---------- */
-    const state = {
-      theme: 'light',
-      navDirection: 'horizontal',
-      locked: true, // 기본값: 🔒 잠김 (보기 모드)
-      activeMenu: 'leader',
-      songs: [],
-      currentIndex: 0,
-      songformLabels: ['A', 'B', 'C', 'D', 'bis', 'I', 'O'], // 괄호 없는 기본 파트 칩
-      stickersBySong: {},
-      penColor: '#2B2730',
-      penSize: 3,
-      eraseMode: false,
-      cropTarget: null,
-      cropMode: 'auto',
-      cropAutoBox: null,
-      cropManualBox: null,
-    };
-    const PEN_COLORS = ['#2B2730', '#E0484B', '#3A7BD5', '#2FA84F', '#E8912D'];
+      <!-- 현재 공유된 계정 목록 -->
+      <div>
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">공유된 찬양팀원 목록</label>
+        <div id="shareEmailList"
+          class="flex flex-wrap gap-1.5 p-2 rounded-xl border min-h-[44px] max-h-28 overflow-y-auto"
+          style="border-color:var(--border);background:var(--surface-2)"></div>
+      </div>
 
-    /* ---------- DOM 캐시 ---------- */
-    const ID_LIST = [
-      'lockBtn', 'lockClosedIcon', 'lockOpenIcon', 'songformBar', 'viewer', 'emptyState', 'emptyAddBtn',
-      'baseCanvas', 'stickerLayer', 'userCanvas', 'navUI', 'hotspotPrev', 'hotspotNext', 'navIndicator',
-      'leaderToolbar', 'addSongBtn', 'manageSongBtn',
-      'penToolbar', 'colorSwatches', 'sizeRange', 'eraseBtn', 'textMemoBtn',
-      'bottomNav', 'navLeaderBtn', 'navUserBtn', 'navSettingsBtn',
-      'fileInput',
-      'cropModal', 'cropAutoBtn', 'cropManualBtn', 'cropStage', 'cropDisplayImg', 'cropBox', 'cropCancelBtn', 'cropApplyBtn',
-      'songManagerModal', 'songManagerList', 'songManagerAddBtn',
-      'settingsModal', 'themeLightBtn', 'themeDarkBtn', 'navHBtn', 'navVBtn', 'songformManageList', 'newLabelInput', 'addLabelBtn', 'driveConnectBtn', 'driveStatus',
-      'textMemoModal', 'textMemoInput', 'textMemoAddBtn'
-    ];
-    const els = {};
-    function cacheEls() {
-      ID_LIST.forEach(id => els[id] = document.getElementById(id));
-    }
+      <!-- 원클릭 링크 복사 -->
+      <div class="pt-2 border-t flex flex-col gap-2" style="border-color:var(--border)">
+        <button id="copyShareLinkBtn"
+          class="w-full py-2.5 rounded-xl border font-semibold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+          style="border-color:var(--border);background:var(--surface-2)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4">
+            <path
+              d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+          </svg>
+          <span>콘티 공유 링크 복사</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
-    /* ---------- 유틸리티 함수 ---------- */
-    function show(el, disp = 'block') { if (el) el.style.display = disp; }
-    function hide(el) { if (el) el.style.display = 'none'; }
-    function setActive(el, active) {
-      if (!el) return;
-      el.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
-      el.style.background = active ? 'var(--accent)' : 'var(--surface)';
-      el.style.color = active ? '#ffffff' : 'var(--text)';
-    }
-    function debounce(fn, wait) {
-      let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
-    }
-    function escapeHtml(str) {
-      return String(str).replace(/[&<>"']/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[s]));
-    }
+  <!-- ==========================================
+       [인도자 도구] 신규 곡 메타데이터 입력 모달 (코드, 박자, 템포, 주제)
+       ========================================== -->
+  <div id="songMetaModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
+    style="display:none">
+    <div class="absolute inset-0 modal-backdrop" data-close-songmeta></div>
+    <div
+      class="relative w-full max-w-md rounded-2xl p-4 sm:p-5 shadow-2xl z-10 space-y-3.5 max-h-[85vh] overflow-y-auto"
+      style="background:var(--surface)">
+      <div class="flex items-center justify-between border-b pb-2.5 sticky top-0 z-10"
+        style="border-color:var(--border);background:var(--surface)">
+        <h2 id="songMetaModalTitle" class="font-bold text-base">악보 정보 입력</h2>
+        <button data-close-songmeta class="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-5 h-5">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
 
-    /* ---------- IndexedDB 저장소 (곡별 독립 매핑) ---------- */
-    const DB_NAME = 'continote_db';
-    const DB_VER = 1;
-    let dbPromise = null;
-    function getDB() {
-      if (dbPromise) return dbPromise;
-      dbPromise = new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, DB_VER);
-        req.onupgradeneeded = (e) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains('songs')) db.createObjectStore('songs', { keyPath: 'id' });
-          if (!db.objectStoreNames.contains('notes')) db.createObjectStore('notes', { keyPath: 'songId' });
-          if (!db.objectStoreNames.contains('stickers')) db.createObjectStore('stickers', { keyPath: 'songId' });
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-      return dbPromise;
-    }
-    async function idbGet(store, key) {
-      const db = await getDB();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(store, 'readonly');
-        const req = tx.objectStore(store).get(key);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-    }
-    async function idbGetAll(store) {
-      const db = await getDB();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(store, 'readonly');
-        const req = tx.objectStore(store).getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject(req.error);
-      });
-    }
-    async function idbPut(store, val) {
-      const db = await getDB();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(store, 'readwrite');
-        tx.objectStore(store).put(val);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-    }
-    async function idbDelete(store, key) {
-      const db = await getDB();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(store, 'readwrite');
-        tx.objectStore(store).delete(key);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-    }
+      <!-- 곡명 -->
+      <div>
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">곡명 *</label>
+        <input id="songMetaNameInput" type="text" placeholder="예: 꽃들도"
+          class="w-full px-3.5 py-2.5 rounded-xl border text-sm font-semibold outline-none focus:ring-2"
+          style="border-color:var(--border);background:var(--surface-2);color:var(--text)" />
+      </div>
 
-    /* ---------- 설정 (localStorage) ---------- */
-    const LS_KEY = 'continote_settings_v1';
-    function loadSettings() {
-      try {
-        const raw = localStorage.getItem(LS_KEY);
-        if (raw) return JSON.parse(raw);
-      } catch (e) { }
-      return { theme: 'light', navDirection: 'horizontal', songformLabels: ['A', 'B', 'C', 'D', 'bis', 'I', 'O'] };
-    }
-    function saveSettings() {
-      localStorage.setItem(LS_KEY, JSON.stringify({
-        theme: state.theme, navDirection: state.navDirection, songformLabels: state.songformLabels
-      }));
-    }
+      <!-- 코드 / 박자 / 템포 3열 배치 -->
+      <div class="grid grid-cols-3 gap-2">
+        <div>
+          <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">코드 (Key)</label>
+          <select id="songMetaKeySelect"
+            class="w-full px-2.5 py-2 rounded-xl border text-xs sm:text-sm font-semibold outline-none focus:ring-2"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)">
+            <option value="">선택</option>
+            <option value="C">C</option>
+            <option value="C#">C# / Db</option>
+            <option value="D">D</option>
+            <option value="Eb">Eb</option>
+            <option value="E">E</option>
+            <option value="F">F</option>
+            <option value="F#">F# / Gb</option>
+            <option value="G">G</option>
+            <option value="Ab">Ab</option>
+            <option value="A">A</option>
+            <option value="Bb">Bb</option>
+            <option value="B">B</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">박자</label>
+          <select id="songMetaTimeSigSelect"
+            class="w-full px-2.5 py-2 rounded-xl border text-xs sm:text-sm font-semibold outline-none focus:ring-2"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)">
+            <option value="4/4">4/4</option>
+            <option value="3/4">3/4</option>
+            <option value="6/8">6/8</option>
+            <option value="2/4">2/4</option>
+            <option value="기타">기타</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">템포 (BPM)</label>
+          <input id="songMetaTempoInput" type="number" placeholder="예: 72"
+            class="w-full px-2.5 py-2 rounded-xl border text-xs sm:text-sm font-semibold outline-none focus:ring-2"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" />
+        </div>
+      </div>
 
-    /* ---------- 곡 데이터 관리 ---------- */
-    async function loadSongsFromDB() {
-      const all = await idbGetAll('songs');
-      all.sort((a, b) => a.order - b.order);
-      state.songs = all;
-    }
-    async function saveSongs() {
-      state.songs.forEach((s, i) => s.order = i);
-      for (const s of state.songs) await idbPut('songs', s);
-    }
-    async function loadStickersForSong(songId) {
-      const rec = await idbGet('stickers', songId);
-      state.stickersBySong[songId] = rec ? rec.items : [];
-    }
-    async function saveStickersForSong(songId) {
-      await idbPut('stickers', { songId, items: state.stickersBySong[songId] || [] });
-    }
-    async function saveNoteSnapshot(songId) {
-      const dataURL = els.userCanvas.toDataURL('image/png');
-      await idbPut('notes', { songId, dataURL });
-    }
+      <!-- 주제 태그 선택 -->
+      <div>
+        <label class="block text-xs font-semibold mb-1.5" style="color:var(--text-dim)">주제 태그 (선택)</label>
+        <div id="songMetaThemesContainer" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1"></div>
+      </div>
 
-    /* ---------- 캔버스 렌더링 ---------- */
-    function resizeCanvases() {
-      const w = els.viewer.clientWidth, h = els.viewer.clientHeight;
-      const dpr = window.devicePixelRatio || 1;
-      [els.baseCanvas, els.userCanvas].forEach(c => {
-        c.width = w * dpr; c.height = h * dpr;
-        c.style.width = w + 'px'; c.style.height = h + 'px';
-        c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
-      });
-    }
-    function clearCanvases() {
-      const w = els.viewer.clientWidth, h = els.viewer.clientHeight;
-      els.baseCanvas.getContext('2d').clearRect(0, 0, w, h);
-      els.userCanvas.getContext('2d').clearRect(0, 0, w, h);
-    }
-    function drawBaseImage(song) {
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-          const w = els.viewer.clientWidth, h = els.viewer.clientHeight;
-          const ctx = els.baseCanvas.getContext('2d');
-          ctx.clearRect(0, 0, w, h);
-          const scale = Math.min(w / img.width, h / img.height);
-          const dw = img.width * scale, dh = img.height * scale;
-          ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
-          resolve();
-        };
-        img.src = song.image;
-      });
-    }
-    async function drawUserSnapshot(songId) {
-      const w = els.viewer.clientWidth, h = els.viewer.clientHeight;
-      const ctx = els.userCanvas.getContext('2d');
-      ctx.clearRect(0, 0, w, h);
-      if (!songId) return;
-      const rec = await idbGet('notes', songId);
-      if (!rec) return;
-      await new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => { ctx.drawImage(img, 0, 0, w, h); resolve(); };
-        img.src = rec.dataURL;
-      });
-    }
-    async function renderAll() {
-      resizeCanvases();
-      const song = state.songs[state.currentIndex];
-      if (song) {
-        await drawBaseImage(song);
-        await drawUserSnapshot(song.id);
-        if (!(song.id in state.stickersBySong)) await loadStickersForSong(song.id);
-        renderStickers(song.id);
-      } else {
-        clearCanvases();
-        renderStickers(null);
-      }
-      applyState();
-    }
+      <div class="pt-2 border-t flex gap-2" style="border-color:var(--border)">
+        <button data-close-songmeta class="flex-1 py-2.5 rounded-xl border font-semibold text-sm"
+          style="border-color:var(--border);background:var(--surface-2)">취소</button>
+        <button id="songMetaSaveBtn" class="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm"
+          style="background:var(--accent)">
+          악보 등록 완료
+        </button>
+      </div>
+    </div>
+  </div>
 
-    /* ---------- 상태 -> UI 반영 (자물쇠 & 툴바 & 내비게이션 완벽 제어) ---------- */
-    function applyState() {
-      document.documentElement.classList.toggle('dark', state.theme === 'dark');
+  <!-- ==========================================
+       [인도자 도구] 악보 보관함 -> 내 콘티로 추가 모달
+       ========================================== -->
+  <div id="addToContiModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
+    style="display:none">
+    <div class="absolute inset-0 modal-backdrop" data-close-add-to-conti></div>
+    <div class="relative w-full max-w-sm rounded-2xl p-4 shadow-2xl z-10 space-y-3.5 max-h-[85vh] overflow-y-auto"
+      style="background:var(--surface)">
+      <div class="flex items-center justify-between border-b pb-2.5 sticky top-0 z-10"
+        style="border-color:var(--border);background:var(--surface)">
+        <div>
+          <h2 class="font-bold text-base">내 콘티에 악보 추가</h2>
+          <p id="addToContiSongTitle" class="text-xs truncate font-semibold mt-0.5" style="color:var(--accent)"></p>
+        </div>
+        <button data-close-add-to-conti class="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-5 h-5">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
 
-      // 1. 자물쇠 아이콘 및 버튼 스타일 (보기 모드: 반투명 / 편집 모드: 강조)
-      show(els.lockClosedIcon, state.locked ? 'flex' : 'none');
-      show(els.lockOpenIcon, state.locked ? 'none' : 'flex');
-      if (state.locked) {
-        els.lockBtn.className = 'w-10 h-10 flex items-center justify-center rounded-xl transition-all lock-view-mode';
-      } else {
-        els.lockBtn.className = 'w-10 h-10 flex items-center justify-center rounded-xl transition-all lock-edit-mode';
-      }
+      <div class="space-y-1.5">
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">추가할 콘티를 선택하세요</label>
+        <div id="addToContiListContainer" class="space-y-2 max-h-48 overflow-y-auto"></div>
+      </div>
 
-      const hasSongs = state.songs.length > 0;
-      els.emptyState.style.display = hasSongs ? 'none' : 'flex';
-      els.baseCanvas.style.visibility = hasSongs ? 'visible' : 'hidden';
-      els.userCanvas.style.visibility = hasSongs ? 'visible' : 'hidden';
+      <div class="pt-2 border-t flex gap-2" style="border-color:var(--border)">
+        <button data-close-add-to-conti class="flex-1 py-2.5 rounded-xl border font-semibold text-sm"
+          style="border-color:var(--border);background:var(--surface-2)">취소</button>
+        <button id="confirmAddToContiBtn" class="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm"
+          style="background:var(--accent)">
+          콘티에 담기
+        </button>
+      </div>
+    </div>
+  </div>
 
-      // 2. 툴바 노출 제어 (🔒 잠김=보기 모드일 때 펜/스티커 툴바는 완전히 숨김)
-      const showLeaderTb = !state.locked && state.activeMenu === 'leader';
-      const showPenTb = !state.locked && state.activeMenu === 'user' && hasSongs;
-
-      els.leaderToolbar.style.display = showLeaderTb ? 'flex' : 'none';
-      els.penToolbar.style.display = showPenTb ? 'flex' : 'none';
-
-      // 3. 곡 넘김 UI 제어 (🔓 편집 모드 시 곡 넘김 UI 및 핫스팟 완전 차단 & DOM hidden 처리)
-      const showNavUI = state.locked && hasSongs && state.songs.length > 1;
-      els.navUI.style.display = showNavUI ? 'block' : 'none';
-      els.navUI.classList.toggle('hidden', !showNavUI);
-
-      // 스티커 레이어 잠금 상태 동기화
-      els.stickerLayer.classList.toggle('locked', state.locked);
-      els.userCanvas.style.pointerEvents = showPenTb ? 'auto' : 'none';
-
-      // 4. 하단 3대 메뉴 액티브 상태 표시
-      els.navLeaderBtn.querySelector('span').style.color = state.activeMenu === 'leader' ? 'var(--accent)' : 'var(--text-dim)';
-      els.navUserBtn.querySelector('span').style.color = state.activeMenu === 'user' ? 'var(--accent)' : 'var(--text-dim)';
-      els.navSettingsBtn.querySelector('span').style.color = 'var(--text-dim)';
-
-      els.eraseBtn.style.background = state.eraseMode ? 'var(--accent)' : 'transparent';
-      els.eraseBtn.style.color = state.eraseMode ? '#fff' : 'var(--text)';
-
-      updateNavDirectionUI();
-      updateNavIndicator();
-      renderColorSwatches();
-    }
-
-    function updateNavDirectionUI() {
-      const horizontal = state.navDirection === 'horizontal';
-      els.hotspotPrev.className = 'absolute focus:outline-none ' + (horizontal ? 'left-0 top-0 bottom-0 w-1/4' : 'top-0 left-0 right-0 h-1/4');
-      els.hotspotNext.className = 'absolute focus:outline-none ' + (horizontal ? 'right-0 top-0 bottom-0 w-1/4' : 'bottom-0 left-0 right-0 h-1/4');
-    }
-    function updateNavIndicator() {
-      els.navIndicator.textContent = state.songs.length ? `${state.currentIndex + 1} / ${state.songs.length}` : '';
-    }
-    function renderColorSwatches() {
-      els.colorSwatches.innerHTML = '';
-      PEN_COLORS.forEach(color => {
-        const btn = document.createElement('button');
-        const selected = !state.eraseMode && state.penColor === color;
-        btn.className = 'shrink-0 w-7 h-7 rounded-full transition-transform active:scale-95';
-        btn.style.background = color;
-        btn.style.boxShadow = selected ? '0 0 0 2px var(--surface), 0 0 0 4px var(--accent)' : '0 0 0 1px var(--border)';
-        btn.addEventListener('click', () => { state.penColor = color; state.eraseMode = false; applyState(); });
-        els.colorSwatches.appendChild(btn);
-      });
-    }
-
-    /* ---------- 곡 이동 (편집 모드 시 철저히 차단) ---------- */
-    function goPrev() {
-      if (!state.locked) return; // 편집 모드 시 곡 넘김 완전 차단
-      if (state.currentIndex > 0) {
-        state.currentIndex--;
-        loadCurrentSong();
-      }
-    }
-    function goNext() {
-      if (!state.locked) return; // 편집 모드 시 곡 넘김 완전 차단
-      if (state.currentIndex < state.songs.length - 1) {
-        state.currentIndex++;
-        loadCurrentSong();
-      }
-    }
-    async function loadCurrentSong() {
-      await renderAll();
-    }
-
-    /* ---------- 송폼 칩 바 (상단 Sticky 고정, 알파벳 'I'는 font-serif font-bold) ---------- */
-    function renderSongformBar() {
-      els.songformBar.innerHTML = '';
-      state.songformLabels.forEach(label => {
-        const btn = document.createElement('button');
-        // 'I' 파트는 숫자 1과 혼동되지 않도록 고유한 Serif 폰트 적용
-        const isPartI = (label === 'I');
-        btn.className = `shrink-0 px-3.5 py-1.5 rounded-full border text-sm transition-all active:scale-95 shadow-sm ${isPartI ? 'font-serif font-bold tracking-wider' : 'font-bold'}`;
-        btn.style.borderColor = 'var(--accent)';
-        btn.style.color = 'var(--accent)';
-        btn.style.background = 'var(--surface)';
-        btn.textContent = label;
-        btn.title = `[${label}] 파트 스티커 배치`;
-        btn.addEventListener('click', () => addSongformSticker(label));
-        els.songformBar.appendChild(btn);
-      });
-    }
-    function addSongformSticker(label) {
-      if (state.locked) {
-        alert('악보에 스티커를 배치하려면 상단 자물쇠(🔓)를 눌러 편집 모드로 전환해주세요.');
-        return;
-      }
-      const song = state.songs[state.currentIndex];
-      if (!song) return;
-      const list = state.stickersBySong[song.id] || (state.stickersBySong[song.id] = []);
-      list.push({ id: crypto.randomUUID(), type: 'songform', label, x: 50, y: 35 });
-      saveStickersForSong(song.id);
-      renderStickers(song.id);
-    }
-
-    /* ---------- 스티커 DOM 렌더링 & 드래그/롱프레스 삭제 ---------- */
-    function renderStickers(songId) {
-      els.stickerLayer.innerHTML = '';
-      if (!songId) return;
-      const items = state.stickersBySong[songId] || [];
-      items.forEach(item => els.stickerLayer.appendChild(createStickerEl(songId, item)));
-    }
-    function createStickerEl(songId, item) {
-      const el = document.createElement('div');
-      const typeClass = item.type === 'text' ? 'text-memo' : 'songform';
-      const fontClass = item.label === 'I' ? 'font-serif font-bold tracking-wider' : 'font-bold';
-      el.className = `sticker ${typeClass} ${fontClass}`;
-      el.style.left = item.x + '%';
-      el.style.top = item.y + '%';
-      el.style.pointerEvents = 'auto';
-      el.textContent = item.label;
-      attachStickerEvents(el, songId, item);
-      return el;
-    }
-    function attachStickerEvents(el, songId, item) {
-      let dragging = false, moved = false, longPressTimer = null, startX = 0, startY = 0;
-
-      el.addEventListener('pointerdown', (e) => {
-        if (state.locked) return;
-        e.stopPropagation();
-        el.setPointerCapture(e.pointerId);
-        startX = e.clientX; startY = e.clientY; moved = false;
-        longPressTimer = setTimeout(() => { if (!moved) showDeleteBadge(el, songId, item); }, 500);
-      });
-      el.addEventListener('pointermove', (e) => {
-        if (state.locked) return;
-        const dx = e.clientX - startX, dy = e.clientY - startY;
-        if (!moved && Math.hypot(dx, dy) > 6) {
-          moved = true; dragging = true;
-          clearTimeout(longPressTimer);
-          removeDeleteBadge(el);
-        }
-        if (!dragging) return;
-        const rect = els.viewer.getBoundingClientRect();
-        const nx = Math.min(95, Math.max(5, ((e.clientX - rect.left) / rect.width) * 100));
-        const ny = Math.min(95, Math.max(5, ((e.clientY - rect.top) / rect.height) * 100));
-        el.style.left = nx + '%';
-        el.style.top = ny + '%';
-        item.x = Math.round(nx * 10) / 10;
-        item.y = Math.round(ny * 10) / 10;
-      });
-      function endDrag(e) {
-        clearTimeout(longPressTimer);
-        if (dragging) {
-          dragging = false;
-          try { el.releasePointerCapture(e.pointerId); } catch (_) { }
-          saveStickersForSong(songId);
-        }
-      }
-      el.addEventListener('pointerup', endDrag);
-      el.addEventListener('pointercancel', endDrag);
-    }
-    function showDeleteBadge(el, songId, item) {
-      removeDeleteBadge(el);
-      const badge = document.createElement('button');
-      badge.className = 'del-badge';
-      badge.textContent = '×';
-      badge.title = '스티커 삭제';
-      badge.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const list = state.stickersBySong[songId] || [];
-        const idx = list.findIndex(s => s.id === item.id);
-        if (idx !== -1) list.splice(idx, 1);
-        saveStickersForSong(songId);
-        el.remove();
-      });
-      el.appendChild(badge);
-    }
-    function removeDeleteBadge(el) {
-      const b = el.querySelector('.del-badge');
-      if (b) b.remove();
-    }
-
-    /* ---------- 개인 펜 필기 드로잉 드라이버 ---------- */
-    function setupDrawing() {
-      const canvas = els.userCanvas;
-      const ctx = canvas.getContext('2d');
-      let drawing = false;
-
-      function getPos(e) {
-        const r = canvas.getBoundingClientRect();
-        return { x: e.clientX - r.left, y: e.clientY - r.top };
-      }
-      canvas.addEventListener('pointerdown', (e) => {
-        if (state.locked || state.activeMenu !== 'user') return;
-        drawing = true;
-        canvas.setPointerCapture(e.pointerId);
-        const pos = getPos(e);
-        ctx.beginPath();
-        ctx.moveTo(pos.x, pos.y);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = state.eraseMode ? '#000000' : state.penColor;
-        ctx.lineWidth = state.penSize;
-        ctx.globalCompositeOperation = state.eraseMode ? 'destination-out' : 'source-over';
-      });
-      canvas.addEventListener('pointermove', (e) => {
-        if (!drawing) return;
-        const pos = getPos(e);
-        ctx.lineTo(pos.x, pos.y);
-        ctx.stroke();
-      });
-      function endStroke(e) {
-        if (!drawing) return;
-        drawing = false;
-        try { canvas.releasePointerCapture(e.pointerId); } catch (_) { }
-        const song = state.songs[state.currentIndex];
-        if (song) saveNoteSnapshot(song.id);
-      }
-      canvas.addEventListener('pointerup', endStroke);
-      canvas.addEventListener('pointercancel', endStroke);
-      canvas.addEventListener('pointerleave', endStroke);
-    }
-
-    /* ---------- 곡 넘김 제스처 (보기 모드에서만 동작, 편집 모드 시 차단) ---------- */
-    function setupSwipe() {
-      let sx = 0, sy = 0, st = 0, active = false;
-      els.viewer.addEventListener('pointerdown', (e) => {
-        if (!state.locked) return; // 편집 모드 시 스와이프 제스처 완전 차단
-        active = true; sx = e.clientX; sy = e.clientY; st = Date.now();
-      });
-      els.viewer.addEventListener('pointerup', (e) => {
-        if (!active || !state.locked) return;
-        active = false;
-        const dx = e.clientX - sx, dy = e.clientY - sy, dt = Date.now() - st;
-        if (dt > 700) return;
-        if (state.navDirection === 'horizontal') {
-          if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) (dx < 0 ? goNext() : goPrev());
-        } else {
-          if (Math.abs(dy) > 50 && Math.abs(dy) > Math.abs(dx)) (dy < 0 ? goNext() : goPrev());
-        }
-      });
-    }
-
-    /* ---------- Auto-Crop 알고리즘 (단색 여백 감지) ---------- */
-    function detectCropBox(img) {
-      const maxDim = 600;
-      const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
-      const dw = Math.max(1, Math.round(img.naturalWidth * scale));
-      const dh = Math.max(1, Math.round(img.naturalHeight * scale));
-      const c = document.createElement('canvas');
-      c.width = dw; c.height = dh;
-      const ctx = c.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(img, 0, 0, dw, dh);
-      const data = ctx.getImageData(0, 0, dw, dh).data;
-      const bg = [data[0], data[1], data[2]];
-      const tol = 24;
-      function isBg(x, y) {
-        const i = (y * dw + x) * 4;
-        return Math.abs(data[i] - bg[0]) <= tol && Math.abs(data[i + 1] - bg[1]) <= tol && Math.abs(data[i + 2] - bg[2]) <= tol;
-      }
-      function rowHasContent(y) { for (let x = 0; x < dw; x += 2) { if (!isBg(x, y)) return true; } return false; }
-      function colHasContent(x) { for (let y = 0; y < dh; y += 2) { if (!isBg(x, y)) return true; } return false; }
-      let top = 0; while (top < dh && !rowHasContent(top)) top++;
-      let bottom = dh - 1; while (bottom > top && !rowHasContent(bottom)) bottom--;
-      let left = 0; while (left < dw && !colHasContent(left)) left++;
-      let right = dw - 1; while (right > left && !colHasContent(right)) right--;
-      if (top >= bottom || left >= right) return { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
-      const pad = 8;
-      top = Math.max(0, top - pad); left = Math.max(0, left - pad);
-      bottom = Math.min(dh - 1, bottom + pad); right = Math.min(dw - 1, right + pad);
-      const inv = 1 / scale;
-      return {
-        x: Math.round(left * inv), y: Math.round(top * inv),
-        w: Math.round((right - left) * inv), h: Math.round((bottom - top) * inv)
-      };
-    }
-    function renderCropToDataURL(img, box) {
-      const c = document.createElement('canvas');
-      c.width = Math.max(1, Math.round(box.w));
-      c.height = Math.max(1, Math.round(box.h));
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, box.x, box.y, box.w, box.h, 0, 0, c.width, c.height);
-      return c.toDataURL('image/png');
-    }
-
-    /* ---------- Crop 모달 플로우 (대형 미리보기 & Auto/Manual 전환) ---------- */
-    function openCropModal(file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          state.cropTarget = { img, naturalW: img.naturalWidth, naturalH: img.naturalHeight, songId: null };
-          startCropFlow();
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
-    }
-    function openCropModalForEdit(song) {
-      const img = new Image();
-      img.onload = () => {
-        state.cropTarget = { img, naturalW: img.naturalWidth, naturalH: img.naturalHeight, songId: song.id };
-        startCropFlow();
-      };
-      img.src = song.original;
-    }
-    function startCropFlow() {
-      const { img } = state.cropTarget;
-      const auto = detectCropBox(img);
-      state.cropAutoBox = auto;
-      state.cropManualBox = { x1: auto.x, y1: auto.y, x2: auto.x + auto.w, y2: auto.y + auto.h };
-      state.cropMode = 'auto';
-      syncCropModeButtons();
-      hide(els.cropBox);
-      els.cropDisplayImg.onload = null;
-      els.cropDisplayImg.src = renderCropToDataURL(img, auto);
-      show(els.cropModal, 'flex');
-    }
-    function syncCropModeButtons() {
-      setActive(els.cropAutoBtn, state.cropMode === 'auto');
-      setActive(els.cropManualBtn, state.cropMode === 'manual');
-    }
-    function positionCropBoxFromState() {
-      const scale = els.cropDisplayImg.clientWidth / state.cropTarget.naturalW;
-      const b = state.cropManualBox;
-      els.cropBox.style.left = (b.x1 * scale) + 'px';
-      els.cropBox.style.top = (b.y1 * scale) + 'px';
-      els.cropBox.style.width = ((b.x2 - b.x1) * scale) + 'px';
-      els.cropBox.style.height = ((b.y2 - b.y1) * scale) + 'px';
-    }
-
-    /* ---------- 곡 목록 & 순서 관리 ---------- */
-    function renderSongManagerList() {
-      els.songManagerList.innerHTML = '';
-      if (!state.songs.length) {
-        els.songManagerList.innerHTML = '<div class="text-center py-6 text-sm" style="color:var(--text-dim)">등록된 곡이 없습니다</div>';
-        return;
-      }
-      state.songs.forEach((song, i) => {
-        const row = document.createElement('div');
-        row.className = 'flex items-center gap-2 p-2 rounded-xl';
-        row.style.background = 'var(--surface-2)';
-        row.innerHTML = `
-          <img src="${song.image}" class="w-12 h-12 object-cover rounded-lg border" style="border-color:var(--border)" />
-          <span class="flex-1 min-w-0 text-sm font-medium truncate song-name" contenteditable="true" title="이름을 탭하여 수정">${escapeHtml(song.name)}</span>
-          <button data-action="up" class="p-1.5 w-7 h-7" title="위로">${ICON.up}</button>
-          <button data-action="down" class="p-1.5 w-7 h-7" title="아래로">${ICON.down}</button>
-          <button data-action="recrop" class="p-1.5 w-7 h-7" title="다시 자르기">${ICON.edit}</button>
-          <button data-action="delete" class="p-1.5 w-7 h-7" style="color:#E0484B" title="삭제">${ICON.trash}</button>
-        `;
-        row.querySelector('.song-name').addEventListener('blur', (e) => {
-          song.name = e.target.textContent.trim() || song.name;
-          saveSongs();
-        });
-        row.querySelector('[data-action="up"]').addEventListener('click', () => moveSong(i, -1));
-        row.querySelector('[data-action="down"]').addEventListener('click', () => moveSong(i, 1));
-        row.querySelector('[data-action="recrop"]').addEventListener('click', () => { hide(els.songManagerModal); openCropModalForEdit(song); });
-        row.querySelector('[data-action="delete"]').addEventListener('click', () => deleteSong(song.id));
-        els.songManagerList.appendChild(row);
-      });
-    }
-    async function moveSong(index, dir) {
-      const newIndex = index + dir;
-      if (newIndex < 0 || newIndex >= state.songs.length) return;
-      const curId = state.songs[state.currentIndex]?.id;
-      const [item] = state.songs.splice(index, 1);
-      state.songs.splice(newIndex, 0, item);
-      await saveSongs();
-      if (curId) state.currentIndex = state.songs.findIndex(s => s.id === curId);
-      renderSongManagerList();
-      await renderAll();
-    }
-    async function deleteSong(id) {
-      const idx = state.songs.findIndex(s => s.id === id);
-      if (idx === -1) return;
-      if (!confirm('이 악보를 삭제할까요?')) return;
-      state.songs.splice(idx, 1);
-      delete state.stickersBySong[id];
-      await saveSongs();
-      await idbDelete('songs', id);
-      await idbDelete('notes', id);
-      await idbDelete('stickers', id);
-      if (state.currentIndex >= state.songs.length) state.currentIndex = Math.max(0, state.songs.length - 1);
-      renderSongManagerList();
-      await renderAll();
-    }
-
-    /* ---------- Google Drive / GIS 연동 구조 ---------- */
-    const GOOGLE_CLIENT_ID = '994055071886-5kn07k326te23njf8is1t7in47deen9t.apps.googleusercontent.com';
-    const GOOGLE_API_KEY = '';
-    const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
-    let gisTokenClient = null;
-    let gDriveAccessToken = null;
-
-    function initGoogleDrive() {
-      if (!GOOGLE_CLIENT_ID || typeof google === 'undefined') return;
-      try {
-        gisTokenClient = google.accounts.oauth2.initTokenClient({
-          client_id: GOOGLE_CLIENT_ID,
-          scope: DRIVE_SCOPE,
-          callback: (resp) => {
-            if (resp.error) { console.error(resp); return; }
-            gDriveAccessToken = resp.access_token;
-            els.driveStatus.textContent = 'Google 드라이브 연동됨';
-          },
-        });
-      } catch (err) {
-        console.warn('Google Identity Services 초기화 대기:', err);
-      }
-    }
-    function connectGoogleDrive() {
-      if (!gisTokenClient) {
-        initGoogleDrive();
-      }
-      if (gisTokenClient) {
-        gisTokenClient.requestAccessToken({ prompt: 'consent' });
-      } else {
-        alert('Google Identity 클라이언트가 아직 준비되지 않았거나 네트워크 연결을 확인해주세요.');
-      }
-    }
-
-    /* ---------- 설정 모달 UI 갱신 ---------- */
-    function updateSettingsButtons() {
-      setActive(els.themeLightBtn, state.theme === 'light');
-      setActive(els.themeDarkBtn, state.theme === 'dark');
-      setActive(els.navHBtn, state.navDirection === 'horizontal');
-      setActive(els.navVBtn, state.navDirection === 'vertical');
-    }
-    function renderSongformManageList() {
-      els.songformManageList.innerHTML = '';
-      state.songformLabels.forEach((label, i) => {
-        const chip = document.createElement('span');
-        const isPartI = (label === 'I');
-        chip.className = `inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${isPartI ? 'font-serif font-bold' : ''}`;
-        chip.style.background = 'var(--surface-2)';
-        chip.innerHTML = `${escapeHtml(label)} <button data-i="${i}" class="text-xs hover:text-red-500 font-bold ml-1">×</button>`;
-        els.songformManageList.appendChild(chip);
-      });
-    }
-
-    /* ---------- 이벤트 리스너 바인딩 ---------- */
-    function wireEvents() {
-      els.emptyAddBtn.addEventListener('click', () => els.fileInput.click());
-      els.addSongBtn.addEventListener('click', () => els.fileInput.click());
-      els.fileInput.addEventListener('change', (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (file) openCropModal(file);
-        e.target.value = '';
-      });
-      els.songManagerAddBtn.addEventListener('click', () => { hide(els.songManagerModal); els.fileInput.click(); });
-
-      // 자물쇠 토글
-      els.lockBtn.addEventListener('click', () => {
-        state.locked = !state.locked;
-        applyState();
-      });
-
-      // 하단 3대 메뉴
-      els.navLeaderBtn.addEventListener('click', () => { state.activeMenu = 'leader'; applyState(); });
-      els.navUserBtn.addEventListener('click', () => { state.activeMenu = 'user'; applyState(); });
-      els.navSettingsBtn.addEventListener('click', () => {
-        renderSongformManageList();
-        updateSettingsButtons();
-        show(els.settingsModal, 'flex');
-      });
-
-      els.manageSongBtn.addEventListener('click', () => { renderSongManagerList(); show(els.songManagerModal, 'flex'); });
-
-      // 곡 넘김 핫스팟 터치
-      els.hotspotPrev.addEventListener('click', goPrev);
-      els.hotspotNext.addEventListener('click', goNext);
-
-      // 펜 툴바
-      els.eraseBtn.addEventListener('click', () => { state.eraseMode = !state.eraseMode; applyState(); });
-      els.sizeRange.addEventListener('input', (e) => { state.penSize = Number(e.target.value); });
-      els.textMemoBtn.addEventListener('click', () => { els.textMemoInput.value = ''; show(els.textMemoModal, 'flex'); });
-      els.textMemoAddBtn.addEventListener('click', () => {
-        const text = els.textMemoInput.value.trim();
-        if (!text) return;
-        const song = state.songs[state.currentIndex];
-        if (!song) return;
-        const list = state.stickersBySong[song.id] || (state.stickersBySong[song.id] = []);
-        list.push({ id: crypto.randomUUID(), type: 'text', label: text, x: 50, y: 50 });
-        saveStickersForSong(song.id);
-        renderStickers(song.id);
-        hide(els.textMemoModal);
-      });
-
-      // 모달 닫기
-      document.querySelectorAll('[data-close-settings]').forEach(el => el.addEventListener('click', () => hide(els.settingsModal)));
-      document.querySelectorAll('[data-close-song-manager]').forEach(el => el.addEventListener('click', () => hide(els.songManagerModal)));
-      document.querySelectorAll('[data-close-textmemo]').forEach(el => el.addEventListener('click', () => hide(els.textMemoModal)));
-
-      // 설정 변경 이벤트
-      els.themeLightBtn.addEventListener('click', () => { state.theme = 'light'; saveSettings(); applyState(); updateSettingsButtons(); });
-      els.themeDarkBtn.addEventListener('click', () => { state.theme = 'dark'; saveSettings(); applyState(); updateSettingsButtons(); });
-      els.navHBtn.addEventListener('click', () => { state.navDirection = 'horizontal'; saveSettings(); applyState(); updateSettingsButtons(); });
-      els.navVBtn.addEventListener('click', () => { state.navDirection = 'vertical'; saveSettings(); applyState(); updateSettingsButtons(); });
-
-      // 송폼 라벨 추가/삭제
-      els.addLabelBtn.addEventListener('click', () => {
-        const v = els.newLabelInput.value.trim();
-        if (!v || state.songformLabels.includes(v)) { els.newLabelInput.value = ''; return; }
-        state.songformLabels.push(v);
-        saveSettings();
-        renderSongformManageList();
-        renderSongformBar();
-        els.newLabelInput.value = '';
-      });
-      els.songformManageList.addEventListener('click', (e) => {
-        const btn = e.target.closest('button[data-i]');
-        if (!btn) return;
-        state.songformLabels.splice(Number(btn.dataset.i), 1);
-        saveSettings();
-        renderSongformManageList();
-        renderSongformBar();
-      });
-
-      els.driveConnectBtn.addEventListener('click', connectGoogleDrive);
-
-      // 크롭 탭 전환
-      els.cropAutoBtn.addEventListener('click', () => {
-        state.cropMode = 'auto';
-        syncCropModeButtons();
-        hide(els.cropBox);
-        els.cropDisplayImg.onload = null;
-        els.cropDisplayImg.src = renderCropToDataURL(state.cropTarget.img, state.cropAutoBox);
-      });
-      els.cropManualBtn.addEventListener('click', () => {
-        state.cropMode = 'manual';
-        syncCropModeButtons();
-        els.cropDisplayImg.onload = () => { positionCropBoxFromState(); show(els.cropBox, 'block'); };
-        els.cropDisplayImg.src = state.cropTarget.img.src;
-      });
-      els.cropCancelBtn.addEventListener('click', () => { hide(els.cropModal); state.cropTarget = null; });
-      els.cropApplyBtn.addEventListener('click', async () => {
-        const { img, songId } = state.cropTarget;
-        let box;
-        if (state.cropMode === 'auto') {
-          box = state.cropAutoBox;
-        } else {
-          const b = state.cropManualBox;
-          box = { x: b.x1, y: b.y1, w: Math.max(1, b.x2 - b.x1), h: Math.max(1, b.y2 - b.y1) };
-        }
-        const dataURL = renderCropToDataURL(img, box);
-        if (songId) {
-          const song = state.songs.find(s => s.id === songId);
-          song.image = dataURL;
-        } else {
-          state.songs.push({ id: crypto.randomUUID(), name: `악보 ${state.songs.length + 1}`, image: dataURL, original: img.src, order: state.songs.length });
-          state.currentIndex = state.songs.length - 1;
-        }
-        await saveSongs();
-        hide(els.cropModal);
-        state.cropTarget = null;
-        await renderAll();
-      });
-
-      // 수동 크롭 4개 핸들 드래그
-      els.cropBox.querySelectorAll('.crop-handle').forEach(handle => {
-        handle.addEventListener('pointerdown', (e) => {
-          e.stopPropagation();
-          handle.setPointerCapture(e.pointerId);
-          const corner = handle.dataset.corner;
-          const onMove = (ev) => {
-            const stageRect = els.cropStage.getBoundingClientRect();
-            const scale = els.cropDisplayImg.clientWidth / state.cropTarget.naturalW;
-            let nx = (ev.clientX - stageRect.left) / scale;
-            let ny = (ev.clientY - stageRect.top) / scale;
-            nx = Math.min(Math.max(nx, 0), state.cropTarget.naturalW);
-            ny = Math.min(Math.max(ny, 0), state.cropTarget.naturalH);
-            const b = state.cropManualBox;
-            const minSize = 20 / scale;
-            if (corner === 'tl') { b.x1 = Math.min(nx, b.x2 - minSize); b.y1 = Math.min(ny, b.y2 - minSize); }
-            if (corner === 'tr') { b.x2 = Math.max(nx, b.x1 + minSize); b.y1 = Math.min(ny, b.y2 - minSize); }
-            if (corner === 'bl') { b.x1 = Math.min(nx, b.x2 - minSize); b.y2 = Math.max(ny, b.y1 + minSize); }
-            if (corner === 'br') { b.x2 = Math.max(nx, b.x1 + minSize); b.y2 = Math.max(ny, b.y1 + minSize); }
-            positionCropBoxFromState();
-          };
-          const onUp = () => {
-            try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
-            handle.removeEventListener('pointermove', onMove);
-            handle.removeEventListener('pointerup', onUp);
-          };
-          handle.addEventListener('pointermove', onMove);
-          handle.addEventListener('pointerup', onUp);
-        });
-      });
-
-      setupDrawing();
-      setupSwipe();
-      window.addEventListener('resize', debounce(renderAll, 200));
-    }
-
-    /* ---------- 앱 초기화 ---------- */
-    document.addEventListener('DOMContentLoaded', async () => {
-      cacheEls();
-      const saved = loadSettings();
-      state.theme = saved.theme;
-      state.navDirection = saved.navDirection;
-      state.songformLabels = saved.songformLabels;
-
-      await loadSongsFromDB();
-      if (state.songs[0]) await loadStickersForSong(state.songs[0].id);
-
-      wireEvents();
-      renderSongformBar();
-      await renderAll();
-      initGoogleDrive();
-    });
-  </script>
+  <!-- ==========================================
+       모듈화된 메인 엔트리 스크립트 (ES Module)
+       ========================================== -->
+  <script type="module" src="js/app.js"></script>
 </body>
 
 </html>

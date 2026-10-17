@@ -1,0 +1,17 @@
+{
+  "name": "continote",
+  "version": "1.0.0",
+  "description": "ContiNote - 스마트 찬양 콘티 & 악보 노트",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "sheetmusic",
+    "continote",
+    "praise"
+  ],
+  "author": "",
+  "license": "MIT"
+}

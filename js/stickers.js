@@ -1,0 +1,118 @@
+/**
+ * ContiNote - Sticker DOM Layer & Drag System
+ */
+
+import { state } from './state.js';
+import { saveStickers } from './db.js';
+
+export function renderStickerLayer(stickerLayer, viewer, songId) {
+  if (!stickerLayer) return;
+  stickerLayer.innerHTML = '';
+  if (!songId) return;
+
+  const list = state.stickersBySong[songId] || [];
+  list.forEach(item => {
+    stickerLayer.appendChild(createStickerElement(songId, item, viewer));
+  });
+}
+
+export function createStickerElement(songId, item, viewer) {
+  const el = document.createElement('div');
+  const isSongform = item.type === 'songform';
+  const isI = item.label === 'I';
+  const isBis = item.label === 'bis';
+  el.className = `sticker ${isSongform ? 'songform' : 'text-memo'} ${isI ? 'part-serif-i' : ''} ${isBis ? 'part-bis' : ''}`;
+  el.style.left = item.x + '%';
+  el.style.top = item.y + '%';
+  el.textContent = item.label;
+
+  let isPointerDown = false;
+  let dragging = false;
+  let moved = false;
+  let startX = 0, startY = 0;
+  let longPressTimer = null;
+
+  el.addEventListener('pointerdown', (e) => {
+    if (state.locked) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    isPointerDown = true;
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch (_) {}
+    startX = e.clientX;
+    startY = e.clientY;
+    moved = false;
+    longPressTimer = setTimeout(() => {
+      if (!moved && isPointerDown) showStickerDeleteBadge(el, songId, item);
+    }, 500);
+  });
+
+  // PC 우클릭 시 즉시 삭제 뱃지 토글
+  el.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showStickerDeleteBadge(el, songId, item);
+  });
+
+  el.addEventListener('pointermove', (e) => {
+    // 마우스 버튼을 누르고 있지 않거나(호버 상태), 보기 모드일 때는 절대 이동 방지
+    if (state.locked || !isPointerDown) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (!moved && Math.hypot(dx, dy) > 5) {
+      moved = true;
+      dragging = true;
+      clearTimeout(longPressTimer);
+      removeStickerDeleteBadge(el);
+    }
+    if (!dragging || !viewer) return;
+    const container = el.parentElement || viewer;
+    const rect = container.getBoundingClientRect();
+    const nx = Math.min(98, Math.max(2, ((e.clientX - rect.left) / rect.width) * 100));
+    const ny = Math.min(98, Math.max(2, ((e.clientY - rect.top) / rect.height) * 100));
+    el.style.left = nx + '%';
+    el.style.top = ny + '%';
+    item.x = Math.round(nx * 10) / 10;
+    item.y = Math.round(ny * 10) / 10;
+  });
+
+  const endHandler = (e) => {
+    isPointerDown = false;
+    clearTimeout(longPressTimer);
+    if (dragging) {
+      dragging = false;
+      try {
+        el.releasePointerCapture(e.pointerId);
+      } catch (_) { }
+      saveStickers(songId);
+    }
+  };
+
+  el.addEventListener('pointerup', endHandler);
+  el.addEventListener('pointercancel', endHandler);
+  return el;
+}
+
+export function showStickerDeleteBadge(el, songId, item) {
+  removeStickerDeleteBadge(el);
+  const badge = document.createElement('button');
+  badge.className = 'del-badge';
+  badge.textContent = '×';
+  badge.title = '스티커 삭제';
+  badge.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const list = state.stickersBySong[songId] || [];
+    const idx = list.findIndex(s => s.id === item.id);
+    if (idx !== -1) list.splice(idx, 1);
+    saveStickers(songId);
+    el.remove();
+  });
+  el.appendChild(badge);
+}
+
+export function removeStickerDeleteBadge(el) {
+  const b = el.querySelector('.del-badge');
+  if (b) b.remove();
+}

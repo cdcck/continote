@@ -1,0 +1,226 @@
+/**
+ * ContiNote - IndexedDB Storage Service (곡별 독립 매핑 & 마스터 악보 라이브러리)
+ */
+
+import { state } from './state.js';
+
+const DB_NAME = 'continote_v3_db';
+const DB_VERSION = 3;
+let dbInstance = null;
+
+export function getDB() {
+  if (dbInstance) return Promise.resolve(dbInstance);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('contis')) {
+        db.createObjectStore('contis', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('songs')) {
+        db.createObjectStore('songs', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('library')) {
+        db.createObjectStore('library', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('notes')) {
+        db.createObjectStore('notes', { keyPath: 'songId' });
+      }
+      if (!db.objectStoreNames.contains('stickers')) {
+        db.createObjectStore('stickers', { keyPath: 'songId' });
+      }
+    };
+    req.onsuccess = () => {
+      dbInstance = req.result;
+      resolve(dbInstance);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function idbGet(store, key) {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function idbGetAll(store) {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function idbPut(store, val) {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).put(val);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function idbDelete(store, key) {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    tx.objectStore(store).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/* --------------------------------------------------
+   마스터 악보 라이브러리 (Library) 영구 저장소
+   -------------------------------------------------- */
+export async function loadLibrarySongs() {
+  let list = await idbGetAll('library');
+  
+  // 마이그레이션: library에 곡이 없고 기존 contis에 곡이 존재하면 자동 등록
+  if (!list.length && state.contis && state.contis.length) {
+    const songMap = new Map();
+    for (const c of state.contis) {
+      for (const s of (c.songs || [])) {
+        if (!songMap.has(s.id) && s.image) {
+          songMap.set(s.id, {
+            ...s,
+            songform: Array.isArray(s.songform) ? s.songform : [],
+            themes: Array.isArray(s.themes) ? s.themes : ['은혜'],
+            key: s.key || '',
+            timeSig: s.timeSig || '4/4',
+            tempo: s.tempo || ''
+          });
+        }
+      }
+    }
+    for (const song of songMap.values()) {
+      await idbPut('library', song);
+      list.push(song);
+    }
+  }
+
+  list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  state.allSongs = list;
+  return state.allSongs;
+}
+
+export async function saveLibrarySong(song) {
+  if (!song) return;
+  const existingIdx = state.allSongs.findIndex(s => s.id === song.id);
+  if (existingIdx !== -1) {
+    state.allSongs[existingIdx] = song;
+  } else {
+    state.allSongs.unshift(song);
+  }
+  await idbPut('library', song);
+}
+
+export async function deleteLibrarySong(songId) {
+  const idx = state.allSongs.findIndex(s => s.id === songId);
+  if (idx !== -1) {
+    state.allSongs.splice(idx, 1);
+    await idbDelete('library', songId);
+  }
+}
+
+/* --------------------------------------------------
+   콘티(Conti) 단위 저장 및 계정 분리
+   -------------------------------------------------- */
+export async function loadContis() {
+  const allContis = await idbGetAll('contis');
+  allContis.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  if (!allContis.length) {
+    const oldSongs = await idbGetAll('songs');
+    oldSongs.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    const defaultConti = {
+      id: crypto.randomUUID(),
+      title: '주일 1부 예배 콘티',
+      date: new Date().toISOString().slice(0, 10),
+      memo: '은혜로운 예배 찬양 콘티입니다.',
+      authorEmail: state.currentUser?.email || 'leader@continote.com',
+      authorName: state.currentUser?.name || '인도자',
+      sharedWith: [],
+      songs: oldSongs || [],
+      createdAt: Date.now()
+    };
+    allContis.push(defaultConti);
+    await idbPut('contis', defaultConti);
+  }
+
+  // 데이터 안전성: authorEmail 및 sharedWith 배열 보장
+  allContis.forEach(c => {
+    if (!c.sharedWith) c.sharedWith = [];
+    if (!c.authorEmail) c.authorEmail = 'leader@continote.com';
+  });
+
+  state.contis = allContis;
+  return state.contis;
+}
+
+export async function saveContis() {
+  for (const c of state.contis) {
+    await idbPut('contis', c);
+  }
+}
+
+export async function saveCurrentConti() {
+  const current = state.contis.find(c => c.id === state.currentContiId);
+  if (current) {
+    current.songs = state.songs;
+    await idbPut('contis', current);
+  }
+}
+
+export async function deleteConti(contiId) {
+  const idx = state.contis.findIndex(c => c.id === contiId);
+  if (idx !== -1) {
+    const [removed] = state.contis.splice(idx, 1);
+    await idbDelete('contis', contiId);
+    if (removed && removed.songs) {
+      for (const s of removed.songs) {
+        await idbDelete('songs', s.id);
+        await idbDelete('notes', s.id);
+        await idbDelete('stickers', s.id);
+      }
+    }
+  }
+}
+
+export async function loadSongs() {
+  const current = state.contis.find(c => c.id === state.currentContiId);
+  state.songs = current ? (current.songs || []) : [];
+  return state.songs;
+}
+
+export async function saveSongs() {
+  state.songs.forEach((s, idx) => {
+    s.order = idx;
+  });
+  await saveCurrentConti();
+}
+
+export async function loadStickers(songId) {
+  const rec = await idbGet('stickers', songId);
+  state.stickersBySong[songId] = rec ? rec.items : [];
+  return state.stickersBySong[songId];
+}
+
+export async function saveStickers(songId) {
+  await idbPut('stickers', { songId, items: state.stickersBySong[songId] || [] });
+}
+
+export async function saveUserDrawing(songId, canvas) {
+  if (!songId || !canvas) return;
+  const dataURL = canvas.toDataURL('image/png');
+  await idbPut('notes', { songId, dataURL });
+}

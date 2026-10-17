@@ -1,0 +1,39 @@
+{
+  "id": "continote-pwa-app",
+  "name": "ContiNote - 스마트 예배 콘티 & 악보 노트",
+  "short_name": "ContiNote",
+  "description": "예배 찬양 콘티 작성, 악보 여백 크롭, 송폼 순서/스티커 부착 및 필기 지원 스마트 악보 웹앱",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#121212",
+  "theme_color": "#3A7BD5",
+  "categories": ["music", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
