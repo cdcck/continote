@@ -1438,22 +1438,14 @@ function updateRatioDisplays() {
   }
 }
 
-function setRatioScale(w, h, isLive = false) {
+function setRatioScale(w, h) {
   ratioState.wScale = Math.max(0.6, Math.min(1.5, Math.round(w * 100) / 100));
   ratioState.hScale = Math.max(0.6, Math.min(1.5, Math.round(h * 100) / 100));
   updateRatioDisplays();
 
-  if (isLive) {
-    // 라이브 드래그 중: 캔버스를 재생성하지 않고 GPU transform을 사용하여 떨림을 100% 방지!
-    if (els.ratioStage) {
-      els.ratioStage.style.transform = `scale(${ratioState.wScale}, ${ratioState.hScale})`;
-    }
-  } else {
-    // 드래그 종료 또는 프리셋/리셋 클릭: 캔버스 버퍼를 실크기로 렌더링하고 transform은 원상 복구
-    if (els.ratioStage) {
-      els.ratioStage.style.transform = 'none';
-    }
-    renderRatioPreview();
+  // 언제나 원본 기준(1.0) 캔버스에 대해 GPU transform scale로 일관되게 제어 (다회 조작 시에도 왜곡 0%)
+  if (els.ratioStage) {
+    els.ratioStage.style.transform = `scale(${ratioState.wScale}, ${ratioState.hScale})`;
   }
 }
 
@@ -1524,16 +1516,33 @@ function renderRatioPreview() {
   if (!ratioState.img || !els.ratioCanvas) return;
   const nw = ratioState.img.naturalWidth || 800;
   const nh = ratioState.img.naturalHeight || 1100;
-  const tw = Math.max(10, Math.round(nw * ratioState.wScale));
-  const th = Math.max(10, Math.round(nh * ratioState.hScale));
 
-  els.ratioCanvas.width = tw;
-  els.ratioCanvas.height = th;
+  // 캔버스 자체는 항상 원본 해상도(100%)로 유지하여 2회 이상 조절 시에도 왜곡 및 뻥튀기 원천 방지
+  els.ratioCanvas.width = nw;
+  els.ratioCanvas.height = nh;
 
   const ctx = els.ratioCanvas.getContext('2d');
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(ratioState.img, 0, 0, nw, nh);
+}
+
+// 최종 저장 및 적용 시점에만 1회 고품질 확정 렌더링
+function getFinalScaledImageUrl() {
+  if (!ratioState.img) return null;
+  const nw = ratioState.img.naturalWidth || 800;
+  const nh = ratioState.img.naturalHeight || 1100;
+  const tw = Math.max(10, Math.round(nw * ratioState.wScale));
+  const th = Math.max(10, Math.round(nh * ratioState.hScale));
+
+  const offscreen = document.createElement('canvas');
+  offscreen.width = tw;
+  offscreen.height = th;
+  const ctx = offscreen.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(ratioState.img, 0, 0, tw, th);
+  return offscreen.toDataURL('image/png');
 }
 
 let editingSongMetaId = null;
@@ -1978,7 +1987,7 @@ function wireEventListeners() {
   // 2단계 악보 비율 조정 모달 이벤트
   if (els.ratioResetBtn) {
     els.ratioResetBtn.addEventListener('click', () => {
-      setRatioScale(1.0, 1.0, false);
+      setRatioScale(1.0, 1.0);
     });
   }
 
@@ -1986,7 +1995,7 @@ function wireEventListeners() {
     btn.addEventListener('click', () => {
       const pw = parseFloat(btn.dataset.w) || 100;
       const ph = parseFloat(btn.dataset.h) || 100;
-      setRatioScale(pw / 100, ph / 100, false);
+      setRatioScale(pw / 100, ph / 100);
     });
   });
 
@@ -2026,16 +2035,14 @@ function wireEventListeners() {
             curH = startHScale - (dy / (baseH / 2));
           }
 
-          // 라이브 transform: 캔버스 버퍼를 건드리지 않아 떨림 0% 유지
-          setRatioScale(curW, curH, true);
+          // GPU transform으로 1.0 원본 기준 부드러운 스케일링
+          setRatioScale(curW, curH);
         };
 
         const onUp = () => {
           try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
           handle.removeEventListener('pointermove', onMove);
           handle.removeEventListener('pointerup', onUp);
-          // 드래그 완료 후 고품질 캔버스 확정 렌더링
-          setRatioScale(ratioState.wScale, ratioState.hScale, false);
         };
 
         handle.addEventListener('pointermove', onMove);
@@ -2061,8 +2068,8 @@ function wireEventListeners() {
   // 비율 모달 -> 3단계 곡 정보 입력 모달 (신규) 또는 기존 곡 저장
   if (els.ratioNextBtn) {
     els.ratioNextBtn.addEventListener('click', async () => {
-      if (!ratioState.img || !els.ratioCanvas) return;
-      const finalUrl = els.ratioCanvas.toDataURL('image/png');
+      const finalUrl = getFinalScaledImageUrl();
+      if (!finalUrl) return;
       hide(els.ratioModal);
 
       // 기존 곡 재편집 모드: 바로 악보 업데이트 및 동기화 저장
