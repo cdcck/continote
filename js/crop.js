@@ -91,10 +91,4 @@ export function syncCropBoxDOM(cropBox, cropDisplayImg, cropTarget, manualBox) {
   cropBox.style.top = (manualBox.y1 * scale) + 'px';
   cropBox.style.width = (bw * scale) + 'px';
   cropBox.style.height = (bh * scale) + 'px';
-
-  const badge = cropBox.querySelector('#cropRatioBadge');
-  if (badge) {
-    const ratio = (bh / bw).toFixed(2);
-    badge.textContent = `비율 1 : ${ratio}`;
-  }
 }

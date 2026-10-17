@@ -259,28 +259,6 @@ html.dark #baseCanvas {
   pointer-events: auto;
 }
 
-.crop-ratio-badge {
-  position: absolute;
-  top: -30px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(15, 23, 42, 0.9);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 12px;
-  border-radius: 9999px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
-  pointer-events: none;
-  white-space: nowrap;
-  z-index: 35;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .crop-handle {
   position: absolute;
   background: var(--accent);
@@ -288,6 +266,18 @@ html.dark #baseCanvas {
   touch-action: none;
   z-index: 25;
   user-select: none;
+}
+
+/* 모바일 터치 조작성 강화를 위한 44x44px 가상 히트박스 */
+.crop-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  pointer-events: auto;
 }
 
 /* 크롭 4개 모서리 핸들 */
@@ -462,24 +452,34 @@ input[type="range"] {
 
 /* ========================================================
    [중요] Netlify 자동 주입 배지 & 플로팅 위젯 완벽 제거
-   - "Powered by Netlify" 배지가 하단 3대 메뉴 버튼을 가리는 현상 방지
+   - "Powered by Netlify" 배지 및 피드백 드로어가 모바일 하단을 가리는 현상 방지
    ======================================================== */
-[class*="netlify"],
-[id*="netlify"],
-iframe[src*="netlify"],
+[class*="netlify" i],
+[id*="netlify" i],
+[data-netlify],
 div[data-netlify-deploy-id],
+netlify-drawer,
+netlify-badge,
 .netlify-badge,
 #netlify-badge,
-a[href*="netlify.com"] {
+iframe[src*="netlify" i],
+iframe[id*="netlify" i],
+a[href*="netlify.com" i],
+a[href*="netlify.app" i],
+div:has(> a[href*="netlify.com" i]),
+div:has(> a[href*="netlify.app" i]) {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;
   height: 0 !important;
   width: 0 !important;
+  max-height: 0 !important;
+  max-width: 0 !important;
+  overflow: hidden !important;
   position: absolute !important;
   left: -9999px !important;
-  bottom: -9999px !important;
+  top: -9999px !important;
   z-index: -9999 !important;
 }
 

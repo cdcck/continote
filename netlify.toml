@@ -1,0 +1,21 @@
+# Netlify Configuration for ContiNote
+[build]
+  publish = "."
+
+[build.environment]
+  NETLIFY_DRAWER = "false"
+
+[context.production.environment]
+  NETLIFY_DRAWER = "false"
+
+[context.deploy-preview.environment]
+  NETLIFY_DRAWER = "false"
+
+[context.branch-deploy.environment]
+  NETLIFY_DRAWER = "false"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"

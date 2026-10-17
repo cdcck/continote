@@ -52,12 +52,12 @@ const DOM_IDS = [
   'stageContainer', 'sheetContainer', 'zoomControls', 'zoomInBtn', 'zoomOutBtn', 'zoomResetBtn', 'zoomLevelText',
   'baseCanvas', 'stickerLayer', 'userCanvas',
   'navUI', 'hotspotPrev', 'hotspotNext', 'navIndicator',
-  'leaderToolbar', 'leaderCropBtn', 'leaderSongformBtn', 'leaderClearStickersBtn', 'leaderSaveDoneBtn',
+  'leaderToolbar', 'leaderCropBtn', 'leaderRatioBtn', 'leaderSongformBtn', 'leaderClearStickersBtn', 'leaderSaveDoneBtn',
   'userPenToolbar', 'penColorSwatches', 'penSizeSlider', 'penSizePreviewDot', 'penSizeDotInner', 'penEraserBtn', 'penClearBtn', 'userTextMemoBtn',
   'bottomNav', 'navLeaderBtn', 'navUserBtn', 'navSongLibraryBtn', 'navSettingsBtn',
   'fileInput',
   // 6. 모달들
-  'cropModal', 'cropAutoTabBtn', 'cropManualTabBtn', 'cropStage', 'cropDisplayImg', 'cropBox', 'cropRatioBadge', 'cropHintText', 'cropCancelBtn', 'cropApplyBtn',
+  'cropModal', 'cropAutoTabBtn', 'cropManualTabBtn', 'cropStage', 'cropDisplayImg', 'cropBox', 'cropHintText', 'cropCancelBtn', 'cropApplyBtn',
   'ratioModal', 'ratioResetBtn', 'ratioStage', 'ratioCanvas', 'ratioWidthVal', 'ratioHeightVal', 'ratioAspectVal', 'ratioPrevBtn', 'ratioNextBtn',
   'songformOrderModal', 'songformOrderSongTitle', 'songformStepInput', 'songformMultiplyBtn', 'songformStepNextBtn', 'songformPickerChips', 'songformClearFlowBtn', 'songformFlowList', 'songformFlowEmptyHint', 'songformOrderApplyBtn',
   'contiModal', 'contiModalTitle', 'contiTitleInput', 'contiDateInput', 'contiMemoInput', 'contiSaveBtn',
@@ -112,6 +112,7 @@ function initGoogleAuth() {
   const savedUser = loadUserSession();
   if (savedUser) {
     state.currentUser = savedUser;
+    migrateLocalContisToUser(savedUser);
   } else {
     // 디폴트 인도자 가상 계정 (오프라인/미로그인 시 기본)
     state.currentUser = {
@@ -149,6 +150,9 @@ function initGoogleAuth() {
             saveUserSession(state.currentUser);
             updateAuthUI();
 
+            // 로그인 전 기본 계정으로 로컬에 생성된 콘티들을 내 계정으로 자동 이전
+            await migrateLocalContisToUser(state.currentUser);
+
             // [1단계] Google Drive에서 콘티 목록 선행 동기화 (가벼움)
             await syncContisIndexFromDrive();
             renderContiListView();
@@ -172,6 +176,25 @@ function initGoogleAuth() {
   }
 }
 
+// 로그인 전 기본 계정(leader@continote.com)으로 작성된 로컬 콘티를 현재 로그인 사용자로 안전하게 이전
+async function migrateLocalContisToUser(user) {
+  if (!user || !user.email || user.email === 'leader@continote.com') return;
+  let changed = false;
+  (state.contis || []).forEach(c => {
+    if (!c.authorEmail || c.authorEmail === 'leader@continote.com') {
+      c.authorEmail = user.email;
+      c.authorName = user.name || user.email.split('@')[0];
+      changed = true;
+    }
+  });
+  if (changed) {
+    await saveContis();
+    if (hasDriveAuth()) {
+      syncContisIndexToDrive(state.contis, false);
+    }
+  }
+}
+
 function updateAuthUI() {
   if (state.currentUser && state.currentUser.email !== 'leader@continote.com') {
     hide(els.headerGoogleLoginBtn);
@@ -184,7 +207,7 @@ function updateAuthUI() {
   }
 }
 
-function handleLoginClick() {
+async function handleLoginClick() {
   if (gisClient) {
     gisClient.requestAccessToken({ prompt: 'consent' });
   } else {
@@ -199,6 +222,7 @@ function handleLoginClick() {
       };
       saveUserSession(state.currentUser);
       updateAuthUI();
+      await migrateLocalContisToUser(state.currentUser);
       renderContiListView();
       applyUIState();
     }
@@ -236,13 +260,19 @@ export function renderContiListView() {
 
   // 계정별 콘티 필터링
   let contis = state.contis || [];
+  const isDefaultGuest = myEmail === 'leader@continote.com';
+
   if (isLeader) {
-    // 인도자 메뉴: 로그인한 계정이 만든 콘티만 노출
-    contis = contis.filter(c => (c.authorEmail || 'leader@continote.com') === myEmail);
-  } else {
-    // 사용자 메뉴: 내가 만들었거나, 나에게 공유된 콘티 노출
+    // 인도자 메뉴: 로그인한 계정의 콘티 + 로그인 전 기본 계정으로 로컬에 생성된 콘티도 안전하게 포함
     contis = contis.filter(c => {
-      const isMine = (c.authorEmail || 'leader@continote.com') === myEmail;
+      const author = c.authorEmail || 'leader@continote.com';
+      return author === myEmail || (!isDefaultGuest && author === 'leader@continote.com');
+    });
+  } else {
+    // 사용자 메뉴: 내가 만들었거나(기본 콘티 포함), 나에게 공유된 콘티 노출
+    contis = contis.filter(c => {
+      const author = c.authorEmail || 'leader@continote.com';
+      const isMine = author === myEmail || (!isDefaultGuest && author === 'leader@continote.com');
       const isSharedToMe = Array.isArray(c.sharedWith) && c.sharedWith.includes(myEmail);
       return isMine || isSharedToMe;
     });
@@ -1341,11 +1371,7 @@ function openCropModalForSong(song, preferredMode = 'auto') {
 function startCropModalSession(preferredMode = 'auto') {
   const { img, songId } = state.cropTarget;
   if (els.cropApplyBtn) {
-    if (songId) {
-      els.cropApplyBtn.innerHTML = '<span>악보 적용하기</span>';
-    } else {
-      els.cropApplyBtn.innerHTML = '<span>다음: 비율 조정</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-4 h-4"><path d="M9 18l6-6-6-6"/></svg>';
-    }
+    els.cropApplyBtn.innerHTML = '<span>다음: 비율 조정</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-4 h-4"><path d="M9 18l6-6-6-6"/></svg>';
   }
   const autoBox = computeAutoCropBox(img);
   state.cropAutoBox = autoBox;
@@ -1366,11 +1392,11 @@ function setCropMode(mode) {
 
   if (mode === 'auto') {
     hide(els.cropBox);
-    els.cropHintText.textContent = 'Auto: 단색 여백을 정밀 분석하여 최적 비율로 자동 잘라냈습니다.';
+    els.cropHintText.textContent = '단색 여백을 정밀 분석하여 최적 비율로 자동 잘라냈습니다.';
     els.cropDisplayImg.onload = null;
     els.cropDisplayImg.src = renderCroppedDataURL(state.cropTarget.img, state.cropAutoBox);
   } else {
-    els.cropHintText.textContent = 'Manual: 모서리 및 각 변의 중앙 핸들을 드래그하여 자를 영역을 원하는 대로 조절하세요.';
+    els.cropHintText.textContent = '핸들을 드래그하여 자를 영역을 조절하세요.';
     els.cropDisplayImg.onload = () => {
       syncCropBoxDOM(els.cropBox, els.cropDisplayImg, state.cropTarget, state.cropManualBox);
       show(els.cropBox, 'block');
@@ -1386,6 +1412,7 @@ let ratioState = {
   croppedUrl: null,
   originalUrl: null,
   name: '',
+  songId: null,
   cropTarget: null,
   cropMode: 'auto',
   cropAutoBox: null,
@@ -1430,11 +1457,12 @@ function setRatioScale(w, h, isLive = false) {
   }
 }
 
-function openRatioModal({ croppedUrl, originalUrl, name, cropTarget, cropMode, cropAutoBox, cropManualBox }) {
+function openRatioModal({ croppedUrl, originalUrl, name, songId = null, cropTarget = null, cropMode = 'auto', cropAutoBox = null, cropManualBox = null }) {
   ratioState = {
     croppedUrl,
     originalUrl,
     name,
+    songId,
     cropTarget,
     cropMode,
     cropAutoBox,
@@ -1443,6 +1471,22 @@ function openRatioModal({ croppedUrl, originalUrl, name, cropTarget, cropMode, c
     wScale: 1.0,
     hScale: 1.0
   };
+
+  // 모달 하단 버튼 라벨 동적 갱신
+  if (els.ratioNextBtn) {
+    if (songId) {
+      els.ratioNextBtn.innerHTML = '<span>악보에 적용하기</span>';
+    } else {
+      els.ratioNextBtn.innerHTML = '<span>다음: 곡 정보 입력</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-4 h-4"><path d="M9 18l6-6-6-6" /></svg>';
+    }
+  }
+  if (els.ratioPrevBtn) {
+    if (cropTarget) {
+      els.ratioPrevBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-4 h-4"><path d="M15 18l-6-6 6-6" /></svg><span>이전 (크롭)</span>';
+    } else {
+      els.ratioPrevBtn.innerHTML = '<span>취소</span>';
+    }
+  }
 
   if (els.ratioStage) {
     els.ratioStage.style.transform = 'none';
@@ -1456,6 +1500,24 @@ function openRatioModal({ croppedUrl, originalUrl, name, cropTarget, cropMode, c
     show(els.ratioModal, 'flex');
   };
   img.src = croppedUrl;
+}
+
+function openRatioModalForSong(song) {
+  if (!song) return;
+  const targetUrl = song.image || song.original;
+  if (!targetUrl) return;
+
+  const img = new Image();
+  img.onload = () => {
+    openRatioModal({
+      croppedUrl: targetUrl,
+      originalUrl: song.original || targetUrl,
+      name: song.name,
+      songId: song.id,
+      cropTarget: null
+    });
+  };
+  img.src = targetUrl;
 }
 
 function renderRatioPreview() {
@@ -1899,26 +1961,18 @@ function wireEventListeners() {
     const croppedUrl = renderCroppedDataURL(img, box);
     hide(els.cropModal);
 
-    if (songId) {
-      // 기존 곡 다시 자르기
-      const song = state.songs.find(s => s.id === songId);
-      if (song) song.image = croppedUrl;
-      saveSongs();
-      renderAll();
-      state.cropTarget = null;
-    } else {
-      // 신규 곡 등록: 2단계 악보 비율 조정 모달로 이동
-      openRatioModal({
-        croppedUrl,
-        originalUrl: img.src,
-        name,
-        cropTarget: state.cropTarget,
-        cropMode: state.cropMode,
-        cropAutoBox: state.cropAutoBox,
-        cropManualBox: state.cropManualBox
-      });
-      state.cropTarget = null;
-    }
+    // 신규 곡이든 기존 곡이든 2단계 비율 조정 모달로 연속 이동
+    openRatioModal({
+      croppedUrl,
+      originalUrl: img.src,
+      name,
+      songId: songId || null,
+      cropTarget: state.cropTarget,
+      cropMode: state.cropMode,
+      cropAutoBox: state.cropAutoBox,
+      cropManualBox: state.cropManualBox
+    });
+    state.cropTarget = null;
   });
 
   // 2단계 악보 비율 조정 모달 이벤트
@@ -1990,7 +2044,7 @@ function wireEventListeners() {
     });
   }
 
-  // 비율 모달 -> 1단계 크롭 모달로 이전 (복귀)
+  // 비율 모달 -> 1단계 크롭 모달로 이전 (복귀) 또는 닫기
   if (els.ratioPrevBtn) {
     els.ratioPrevBtn.addEventListener('click', () => {
       hide(els.ratioModal);
@@ -2004,12 +2058,28 @@ function wireEventListeners() {
     });
   }
 
-  // 비율 모달 -> 3단계 곡 정보 입력 모달 (다음)
+  // 비율 모달 -> 3단계 곡 정보 입력 모달 (신규) 또는 기존 곡 저장
   if (els.ratioNextBtn) {
-    els.ratioNextBtn.addEventListener('click', () => {
+    els.ratioNextBtn.addEventListener('click', async () => {
       if (!ratioState.img || !els.ratioCanvas) return;
       const finalUrl = els.ratioCanvas.toDataURL('image/png');
       hide(els.ratioModal);
+
+      // 기존 곡 재편집 모드: 바로 악보 업데이트 및 동기화 저장
+      if (ratioState.songId) {
+        const song = state.songs.find(s => s.id === ratioState.songId);
+        if (song) {
+          song.image = finalUrl;
+          await saveSongs();
+          await renderAll();
+          if (hasDriveAuth() && state.currentContiId) {
+            syncContiDetailToDrive(state.currentContiId, true);
+          }
+        }
+        return;
+      }
+
+      // 신규 곡 등록: 메타데이터 입력 모달로 이동
       openSongMetaModal(finalUrl, ratioState.originalUrl, ratioState.name);
     });
   }
@@ -2156,6 +2226,14 @@ function wireEventListeners() {
     if (!song) return;
     openCropModalForSong(song, 'manual');
   });
+
+  if (els.leaderRatioBtn) {
+    els.leaderRatioBtn.addEventListener('click', () => {
+      const song = state.songs[state.currentIndex];
+      if (!song) return;
+      openRatioModalForSong(song);
+    });
+  }
 
   els.leaderSongformBtn.addEventListener('click', () => openSongformOrderModal());
 
@@ -2411,6 +2489,7 @@ function wireEventListeners() {
    초기화
    ================================================== */
 document.addEventListener('DOMContentLoaded', async () => {
+  purgeNetlifyWidgets();
   cacheElements();
   const prefs = loadPreferences();
   state.theme = prefs.theme || 'system';
@@ -2533,5 +2612,53 @@ function setupPWAInstall() {
     }
     deferredInstallPrompt = null;
   });
+}
+
+/* ========================================================
+   Netlify 주입 위젯 & 배지 런타임 실시간 제거
+   ======================================================== */
+function purgeNetlifyWidgets() {
+  const isNetlifyEl = (el) => {
+    if (!el || el.nodeType !== 1) return false;
+    const tag = (el.tagName || '').toLowerCase();
+    if (tag.includes('netlify')) return true;
+    const id = (el.id || '').toLowerCase();
+    const cls = (typeof el.className === 'string' ? el.className : '').toLowerCase();
+    if (id.includes('netlify') || cls.includes('netlify')) return true;
+    if (el.hasAttribute && (el.hasAttribute('data-netlify-deploy-id') || el.hasAttribute('data-netlify'))) return true;
+    if (tag === 'a' && ((el.href || '').includes('netlify.com') || (el.href || '').includes('netlify.app'))) return true;
+    if (tag === 'iframe' && ((el.src || '').includes('netlify') || (el.id || '').includes('netlify'))) return true;
+    return false;
+  };
+
+  const removeMatched = (root) => {
+    if (!root) return;
+    if (isNetlifyEl(root)) {
+      root.remove();
+      return;
+    }
+    const candidates = root.querySelectorAll ? root.querySelectorAll('*') : [];
+    candidates.forEach(el => {
+      if (isNetlifyEl(el)) {
+        el.remove();
+      }
+    });
+  };
+
+  // 초기 1회 실행
+  if (document.body) removeMatched(document.body);
+
+  // 실시간 동적 주입 감지
+  const observer = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType === 1) {
+          removeMatched(node);
+        }
+      }
+    }
+  });
+
+  observer.observe(document.documentElement, { childList: true, subtree: true });
 }
 
