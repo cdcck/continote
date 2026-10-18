@@ -1763,8 +1763,15 @@ function openSongformOrderModal() {
     btn.style.color = 'var(--accent)';
     btn.style.backgroundColor = 'var(--surface)';
     btn.textContent = `+ ${label}`;
-    btn.title = `[${label}] 파트를 연주 진행 순서에 추가`;
-    btn.addEventListener('click', () => addSongformStep(label));
+    btn.title = `[${label}] 파트를 입력창에 채우기`;
+    btn.addEventListener('click', () => {
+      if (els.songformStepInput) {
+        els.songformStepInput.value = label;
+        els.songformStepInput.focus();
+        const len = label.length;
+        els.songformStepInput.setSelectionRange(len, len);
+      }
+    });
     els.songformPickerChips.appendChild(btn);
   });
 
@@ -1787,7 +1794,7 @@ function addSongformStep(step) {
 function renderSongformOrderFlowList() {
   els.songformFlowList.innerHTML = '';
   if (!currentOrderFlow.length) {
-    els.songformFlowList.innerHTML = `<span id="songformFlowEmptyHint" class="text-xs" style="color:var(--text-dim)">입력 후 [다음]을 누르면 순서가 연결됩니다</span>`;
+    els.songformFlowList.innerHTML = `<span id="songformFlowEmptyHint" class="text-xs" style="color:var(--text-dim)">입력 후 [추가]를 누르면 순서가 연결됩니다</span>`;
     return;
   }
   currentOrderFlow.forEach((step, idx) => {

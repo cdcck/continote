@@ -967,7 +967,7 @@
   <div id="songformOrderModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center select-none"
     style="display:none">
     <div class="absolute inset-0 modal-backdrop" data-close-songform-order></div>
-    <div class="relative w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl flex flex-col shadow-2xl overflow-hidden z-10"
+    <div class="relative w-full max-w-[95vw] sm:max-w-lg sm:rounded-2xl rounded-t-2xl flex flex-col shadow-2xl overflow-hidden z-10"
       style="max-height:85vh;background:var(--surface)">
       <!-- 헤더 -->
       <div class="flex items-center justify-between px-4 py-3.5 border-b" style="border-color:var(--border)">
@@ -985,36 +985,37 @@
 
       <!-- 본문 -->
       <div class="p-4 space-y-4 overflow-y-auto">
-        <!-- 1. 스텝 입력창: A1 입력 후 [다음] 클릭 시 A1 > 생성 -->
+        <!-- 1. 스텝 입력창: A1 입력 후 [추가] 클릭 시 A1 > 생성 -->
         <div>
           <label class="block text-xs font-semibold mb-1.5" style="color:var(--text-dim)">
-            순서 직접 입력 (입력 후 [다음] 클릭 또는 Enter)
+            순서 직접 입력 (입력 후 [추가] 클릭 또는 Enter)
           </label>
           <div class="flex items-center gap-2">
             <input id="songformStepInput" type="text" maxlength="12" placeholder="예: A1, A2, B, Out"
-              class="flex-1 px-3.5 py-2.5 rounded-xl border text-sm font-bold outline-none focus:ring-2 transition-all"
+              class="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl border text-sm font-bold outline-none focus:ring-2 transition-all"
               style="border-color:var(--border);background:var(--surface-2);color:var(--text)" />
             <button id="songformMultiplyBtn" type="button"
-              class="shrink-0 px-3 h-10 sm:h-11 rounded-xl border font-bold text-sm shadow-sm active:scale-95 transition-all flex items-center justify-center gap-1 select-none hover:opacity-90"
+              class="shrink-0 px-2.5 sm:px-3 h-10 sm:h-11 rounded-xl border font-bold text-sm shadow-sm active:scale-95 transition-all flex items-center justify-center gap-1 select-none hover:opacity-90 whitespace-nowrap"
               style="border-color:var(--accent);background:var(--accent-soft);color:var(--accent)"
               title="× (반복 배수) 기호 삽입">
               <span class="text-base font-black leading-none">×</span>
               <span class="text-xs font-bold">반복</span>
             </button>
-            <button id="songformStepNextBtn"
-              class="shrink-0 px-4 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all flex items-center gap-1"
-              style="background:var(--accent)">
-              <span>다음</span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-3.5 h-3.5">
-                <path d="m9 18 6-6-6-6" />
+            <button id="songformStepNextBtn" type="button"
+              class="shrink-0 px-3.5 sm:px-4 h-10 sm:h-11 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all flex items-center justify-center gap-1 whitespace-nowrap"
+              style="background:var(--accent)"
+              title="순서에 추가">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-4 h-4">
+                <path d="M12 5v14M5 12h14" />
               </svg>
+              <span>추가</span>
             </button>
           </div>
         </div>
 
         <!-- 2. 빠른 파트 칩 추가 바 -->
         <div>
-          <p class="text-xs font-semibold mb-1.5" style="color:var(--text-dim)">빠른 파트 칩 추가</p>
+          <p class="text-xs font-semibold mb-1.5" style="color:var(--text-dim)">빠른 파트 칩 (탭 시 입력창에 입력)</p>
           <div id="songformPickerChips" class="flex flex-wrap gap-1.5"></div>
         </div>
 
@@ -1026,7 +1027,7 @@
           </div>
           <div id="songformFlowList" class="flex flex-wrap items-center gap-1.5 p-3 rounded-xl border min-h-[58px]"
             style="border-color:var(--border);background:var(--surface-2)">
-            <span id="songformFlowEmptyHint" class="text-xs" style="color:var(--text-dim)">입력 후 [다음]을 누르면 순서가
+            <span id="songformFlowEmptyHint" class="text-xs" style="color:var(--text-dim)">입력 후 [추가]를 누르면 순서가
               연결됩니다</span>
           </div>
         </div>
