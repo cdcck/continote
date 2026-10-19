@@ -138,6 +138,50 @@ ContiNote는 순수 클라이언트 사이드 웹 애플리케이션(SPA & PWA)�
 
 ---
 
+## ☁️ Google Drive API & OAuth 설정 가이드
+
+ContiNote는 브라우저에서 직접 Google Drive v3 REST API를 호출하여 콘티와 악보, 송폼/필기 데이터를 기기간에 안전하게 동기화합니다.
+
+### 1. Google Cloud Console 설정
+
+1. **Google Drive API 활성화**:
+   - [Google Cloud Console](https://console.cloud.google.com/) 접속 후 프로젝트 선택
+   - **[API 및 서비스] → [라이브러리]**에서 `Google Drive API` 검색 후 **[사용]** 클릭
+
+2. **OAuth 동의 화면 (OAuth Consent Screen)**:
+   - **[API 및 서비스] → [OAuth 동의 화면]** 메뉴로 이동
+   - **사용자 유형(User Type) 선택**:
+     - **내부(Internal)** (Google Workspace 조직 도메인: 예 `changdae.cc`):
+       - 해당 조직 도메인 계정만 로그인 가능
+       - 구글 검수(Verification) 및 별도 [테스트 사용자] 등록 없이 즉시 무제한 사용 가능
+       - 찬양팀 전원이 조직 계정을 사용할 때 가장 편리하고 안전한 구성
+     - **외부(External)** (일반 `@gmail.com` 개인 계정 포함 시):
+       - 외부 일반 구글 계정도 로그인 가능
+       - '테스트 중(Testing)' 상태일 때는 **[테스트 사용자(Test users)]** 목록에 로그인할 이메일을 반드시 등록해야 로그인 차단(403 Access Denied) 오류가 발생하지 않음
+   - **범위(Scopes)**:
+     - `https://www.googleapis.com/auth/drive.file` (앱에서 직접 생성한 파일만 접근하는 안전한 최소 권한)
+     - `.../auth/userinfo.email`, `.../auth/userinfo.profile`
+
+3. **OAuth 2.0 클라이언트 ID 생성**:
+   - **[API 및 서비스] → [사용자 인증 정보]** → **[+ 사용자 인증 정보 만들기]** → **[OAuth 클라이언트 ID]**
+   - 애플리케이션 유형: **웹 애플리케이션 (Web application)**
+   - **승인된 자바스크립트 원본 (Authorized JavaScript origins)** 등록:
+     - 로컬 개발 환경: `http://localhost:3000` *(끝에 슬래시 `/` 제외)*
+     - 실서버 배포 주소: `https://<당신의-배포-주소>.netlify.app` 또는 GitHub Pages 주소
+   - **참고**: ContiNote는 순수 클라이언트 정적 웹앱(SPA)으로 백엔드 서버가 없으므로 `Client Secret`은 사용하지 않으며, Netlify Secret(환경변수)에 등록할 필요가 없습니다.
+
+### 2. 코드 적용 및 동기화 동작
+
+- 발급된 클라이언트 ID를 [`js/app.js`](js/app.js) 상단의 `GOOGLE_CLIENT_ID`에 지정합니다:
+  ```javascript
+  const GOOGLE_CLIENT_ID = 'YOUR_CLIENT_ID.apps.googleusercontent.com';
+  ```
+- 브라우저에서 Google 로그인 시:
+  - 본인 Google Drive의 루트에 **`Continote/`** 전용 폴더가 자동 생성됩니다.
+  - 콘티 메타데이터(`contis_index.json`) 및 콘티 상세 악보/필기(`conti_{id}.json`)가 2단계 지연 동기화(Lazy Sync) 구조로 자동 백업됩니다.
+
+---
+
 ## 🛠️ 기술 스택
 
 - **Frontend**: HTML5, Vanilla JavaScript (ES Modules), Vanilla CSS3

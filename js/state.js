@@ -7,6 +7,7 @@ export const state = {
   navDirection: 'horizontal',
   locked: true, // 기본값: 🔒 잠김 (보기 모드)
   activeMenu: 'user', // 'user' | 'leader' | 'library' | 'settings'
+  previousMenu: 'user', // 메뉴 이동 시 직전 메뉴 기억
   viewLevel: 'contiList', // 'contiList' | 'songList' | 'viewer' | 'songLibrary' | 'settings'
   viewerReturnView: null, // 'songList' | 'songLibrary' (뷰어에서 뒤로갈 대상 뷰)
   currentUser: null, // 로그인 사용자 정보 { email, name, picture }

@@ -186,12 +186,19 @@ function initGoogleAuth() {
     }
   }
 
+  window.addEventListener('continote:drive-auth-changed', () => {
+    updateAuthUI();
+  });
+
   // 앱 로드 시 기존 Drive 토큰이 유효하면 백그라운드에서 1단계 콘티 목록 동기화
   if (hasDriveAuth()) {
     syncContisIndexFromDrive().then(() => {
       renderContiListView();
       applyUIState();
-    }).catch(err => console.warn('백그라운드 동기화 대기:', err));
+    }).catch(err => {
+      console.warn('백그라운드 동기화 대기:', err);
+      updateAuthUI();
+    });
   }
 }
 
@@ -215,14 +222,56 @@ async function migrateLocalContisToUser(user) {
 }
 
 function updateAuthUI() {
-  if (state.currentUser && state.currentUser.email !== 'leader@continote.com') {
+  const isLoggedIn = Boolean(state.currentUser && state.currentUser.email !== 'leader@continote.com');
+  const isDriveAuthed = hasDriveAuth();
+
+  if (isLoggedIn) {
     hide(els.headerGoogleLoginBtn);
     show(els.headerProfileChip, 'flex');
     if (els.headerUserAvatar) els.headerUserAvatar.src = state.currentUser.picture;
     if (els.headerUserName) els.headerUserName.textContent = state.currentUser.name;
+
+    // Google Drive 토큰 만료 여부에 따른 시각적 배지 및 툴팁
+    if (els.headerProfileChip) {
+      if (!isDriveAuthed) {
+        els.headerProfileChip.style.borderColor = '#E0484B';
+        els.headerProfileChip.title = `${state.currentUser.name} (Google Drive 만료 - 클릭 시 재연결)`;
+      } else {
+        els.headerProfileChip.style.borderColor = 'var(--border)';
+        els.headerProfileChip.title = `${state.currentUser.name} (${state.currentUser.email})`;
+      }
+    }
   } else {
     show(els.headerGoogleLoginBtn, 'flex');
     hide(els.headerProfileChip);
+  }
+
+  updateDriveStatusUI();
+}
+
+function updateDriveStatusUI() {
+  if (!els.driveStatusText) return;
+  const isDriveAuthed = hasDriveAuth();
+  const isLoggedIn = Boolean(state.currentUser && state.currentUser.email !== 'leader@continote.com');
+
+  if (isDriveAuthed) {
+    els.driveStatusText.textContent = `Google 드라이브 연결됨 (${state.currentUser?.email || '활성'})`;
+    if (els.driveConnectBtn) {
+      els.driveConnectBtn.style.borderColor = 'var(--accent)';
+      els.driveConnectBtn.title = 'Google Drive 연결 상태';
+    }
+  } else if (isLoggedIn) {
+    els.driveStatusText.textContent = 'Google 드라이브 재연결 필요 (클릭)';
+    if (els.driveConnectBtn) {
+      els.driveConnectBtn.style.borderColor = '#E0484B';
+      els.driveConnectBtn.title = '토큰이 만료되었습니다. 클릭하여 다시 연결하세요.';
+    }
+  } else {
+    els.driveStatusText.textContent = 'Google 드라이브 연결';
+    if (els.driveConnectBtn) {
+      els.driveConnectBtn.style.borderColor = 'var(--border)';
+      els.driveConnectBtn.title = 'Google Drive 연결';
+    }
   }
 }
 
@@ -249,6 +298,15 @@ async function handleLoginClick() {
 }
 
 function handleProfileClick() {
+  const isDriveAuthed = hasDriveAuth();
+  if (!isDriveAuthed && state.currentUser && state.currentUser.email !== 'leader@continote.com') {
+    const reAuth = confirm(`'${state.currentUser.name}' 계정의 Google Drive 토큰이 만료되었습니다.\n\n[확인]을 누르면 Google Drive를 다시 연결합니다.\n[취소]를 누르면 로그아웃 창으로 이동합니다.`);
+    if (reAuth) {
+      handleLoginClick();
+      return;
+    }
+  }
+
   if (!confirm(`'${state.currentUser.name} (${state.currentUser.email})' 계정에서 로그아웃하시겠습니까?`)) return;
   state.currentUser = {
     email: 'leader@continote.com',
@@ -482,6 +540,7 @@ export async function openSongList(contiId) {
   await loadSongs();
   renderSongListView();
   applyUIState();
+  pushAppState();
 }
 
 export function renderSongListView() {
@@ -816,6 +875,7 @@ export async function openViewerForLibrarySong(song, libraryList = null) {
   resetZoom();
   applyUIState();
   await renderAll();
+  pushAppState();
 }
 
 function openAddToContiModal(song, mode = 'sheet') {
@@ -867,6 +927,7 @@ export async function openViewerForSong(songIndex) {
   resetZoom();
   applyUIState();
   await renderAll();
+  pushAppState();
 }
 
 export async function renderAll() {
@@ -948,7 +1009,148 @@ export function saveCurrentMenuSession() {
   }
 }
 
-export async function switchToMenu(targetMenu) {
+/* ==================================================
+   브라우저 History API 및 뒤로가기 내비게이션 관리
+   ================================================== */
+let appHistoryDepth = 0;
+let isNavigatingHistory = false;
+
+export function pushAppState(extra = {}) {
+  if (isNavigatingHistory) return;
+  appHistoryDepth++;
+  const navState = {
+    appDepth: appHistoryDepth,
+    activeMenu: state.activeMenu,
+    viewLevel: state.viewLevel,
+    currentContiId: state.currentContiId,
+    currentIndex: state.currentIndex,
+    viewerReturnView: state.viewerReturnView,
+    ...extra
+  };
+  try {
+    window.history.pushState(navState, '');
+  } catch (e) {
+    console.warn('[History] pushState failed:', e);
+  }
+}
+
+export function initBrowserHistory() {
+  const initialState = {
+    appDepth: 0,
+    activeMenu: state.activeMenu || 'user',
+    viewLevel: state.viewLevel || 'contiList',
+    currentContiId: state.currentContiId || null,
+    currentIndex: state.currentIndex || 0,
+    viewerReturnView: state.viewerReturnView || null
+  };
+  try {
+    window.history.replaceState(initialState, '');
+  } catch (e) {}
+
+  window.addEventListener('popstate', async (event) => {
+    // 1. 열려있는 모달이 있다면 닫기 우선 처리
+    const openModals = [
+      els.cropModal, els.ratioModal, els.songformOrderModal, els.contiModal,
+      els.shareModal, els.songMetaModal, els.addToContiModal, els.textMemoModal
+    ].filter(m => m && m.style.display !== 'none');
+
+    if (openModals.length > 0) {
+      openModals.forEach(m => hide(m));
+      return;
+    }
+
+    const targetState = event.state;
+    if (targetState && typeof targetState.appDepth === 'number') {
+      appHistoryDepth = targetState.appDepth;
+    } else {
+      appHistoryDepth = 0;
+    }
+
+    isNavigatingHistory = true;
+    try {
+      await restoreNavigationState(targetState);
+    } finally {
+      isNavigatingHistory = false;
+    }
+  });
+}
+
+async function restoreNavigationState(targetState) {
+  if (!targetState) {
+    state.viewLevel = 'contiList';
+    state.currentContiId = null;
+    renderContiListView();
+    applyUIState();
+    return;
+  }
+
+  state.activeMenu = targetState.activeMenu || 'user';
+  state.viewLevel = targetState.viewLevel || 'contiList';
+  state.currentContiId = targetState.currentContiId || null;
+  state.currentIndex = targetState.currentIndex || 0;
+  state.viewerReturnView = targetState.viewerReturnView || null;
+
+  if (state.viewLevel === 'contiList') {
+    renderContiListView();
+  } else if (state.viewLevel === 'songList') {
+    if (state.currentContiId) {
+      await loadSongs();
+    }
+    renderSongListView();
+  } else if (state.viewLevel === 'songLibrary') {
+    renderSongLibraryView();
+  } else if (state.viewLevel === 'settings') {
+    renderSettingsView();
+  } else if (state.viewLevel === 'viewer') {
+    if (state.viewerReturnView === 'songLibrary') {
+      state.songs = state.allSongs;
+    } else if (state.currentContiId) {
+      await loadSongs();
+    }
+    const song = state.songs[state.currentIndex];
+    if (song && !(song.id in state.stickersBySong)) {
+      await loadStickers(song.id);
+    }
+    resetZoom();
+    await renderAll();
+  }
+
+  saveCurrentMenuSession();
+  applyUIState();
+}
+
+export function handleDirectBack() {
+  if (state.viewLevel === 'viewer') {
+    if (state.viewerReturnView === 'songLibrary') {
+      state.viewLevel = 'songLibrary';
+      state.viewerReturnView = null;
+      state.locked = true;
+      resetZoom();
+      saveCurrentMenuSession();
+      renderSongLibraryView();
+      applyUIState();
+      return;
+    }
+    state.viewLevel = 'songList';
+    state.viewerReturnView = null;
+    state.locked = true;
+    resetZoom();
+    saveCurrentMenuSession();
+    renderSongListView();
+    applyUIState();
+  } else if (state.viewLevel === 'songList') {
+    state.viewLevel = 'contiList';
+    state.currentContiId = null;
+    state.viewerReturnView = null;
+    saveCurrentMenuSession();
+    renderContiListView();
+    applyUIState();
+  } else if (state.viewLevel === 'settings' || state.viewLevel === 'songLibrary') {
+    switchToMenu(state.previousMenu || 'user', true);
+  }
+}
+
+export async function switchToMenu(targetMenu, isFromHistory = false) {
   if (state.activeMenu === targetMenu) {
     // 이미 활성화된 메뉴 탭을 다시 누른 경우 현재 화면과 편집 상태 유지
     return;
@@ -956,6 +1158,7 @@ export async function switchToMenu(targetMenu) {
 
   // 1. 현재 메뉴의 화면 및 편집 상태 저장
   saveCurrentMenuSession();
+  state.previousMenu = state.activeMenu;
 
   // 2. 대상 메뉴로 활성화 전환
   state.activeMenu = targetMenu;
@@ -996,6 +1199,9 @@ export async function switchToMenu(targetMenu) {
   }
 
   applyUIState();
+  if (!isFromHistory) {
+    pushAppState();
+  }
 }
 
 /* ==================================================
@@ -1103,9 +1309,15 @@ export function applyUIState() {
     hide(els.settingsView);
     hide(els.viewerSection);
 
-    hide(els.backBtn);
-    show(els.headerLogoArea, 'flex');
-    hide(els.viewerHeaderInfo);
+    show(els.backBtn, 'flex');
+    if (els.backBtnText) els.backBtnText.textContent = '이전 화면';
+    hide(els.headerLogoArea);
+    show(els.viewerHeaderInfo, 'flex');
+    if (els.viewerContiTitle) els.viewerContiTitle.textContent = '악보 보관함';
+    if (els.viewerSongTitle) {
+      els.viewerSongTitle.textContent = `${state.allSongs.length}개의 악보 보관 중`;
+      show(els.viewerSongTitle);
+    }
     hide(els.addContiBtn);
     hide(els.songListAddBtn);
     show(els.addLibrarySongBtn, 'flex');
@@ -1127,9 +1339,15 @@ export function applyUIState() {
     hide(els.viewerSection);
     show(els.settingsView, 'block');
 
-    hide(els.backBtn);
-    show(els.headerLogoArea, 'flex');
-    hide(els.viewerHeaderInfo);
+    show(els.backBtn, 'flex');
+    if (els.backBtnText) els.backBtnText.textContent = '이전 화면';
+    hide(els.headerLogoArea);
+    show(els.viewerHeaderInfo, 'flex');
+    if (els.viewerContiTitle) els.viewerContiTitle.textContent = '환경 설정';
+    if (els.viewerSongTitle) {
+      els.viewerSongTitle.textContent = '테마 및 클라우드 동기화';
+      show(els.viewerSongTitle);
+    }
     hide(els.addContiBtn);
     hide(els.songListAddBtn);
     hide(els.addLibrarySongBtn);
@@ -1888,31 +2106,10 @@ function wireEventListeners() {
 
   // 3단계 뒤로가기 버튼
   els.backBtn.addEventListener('click', () => {
-    if (state.viewLevel === 'viewer') {
-      if (state.viewerReturnView === 'songLibrary') {
-        state.viewLevel = 'songLibrary';
-        state.viewerReturnView = null;
-        state.locked = true;
-        resetZoom();
-        saveCurrentMenuSession();
-        renderSongLibraryView();
-        applyUIState();
-        return;
-      }
-      state.viewLevel = 'songList';
-      state.viewerReturnView = null;
-      state.locked = true;
-      resetZoom();
-      saveCurrentMenuSession();
-      renderSongListView();
-      applyUIState();
-    } else if (state.viewLevel === 'songList') {
-      state.viewLevel = 'contiList';
-      state.currentContiId = null;
-      state.viewerReturnView = null;
-      saveCurrentMenuSession();
-      renderContiListView();
-      applyUIState();
+    if (appHistoryDepth > 0) {
+      window.history.back();
+    } else {
+      handleDirectBack();
     }
   });
 
@@ -2679,6 +2876,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   wireEventListeners();
+  initBrowserHistory();
   setupPWAInstall();
   registerServiceWorker();
   renderContiListView();

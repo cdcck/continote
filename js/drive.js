@@ -21,6 +21,11 @@ export function setDriveAccessToken(token) {
   } else {
     sessionStorage.removeItem(TOKEN_STORAGE_KEY);
   }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('continote:drive-auth-changed', {
+      detail: { authorized: Boolean(token) }
+    }));
+  }
 }
 
 export function getDriveAccessToken() {
@@ -89,6 +94,7 @@ async function driveApi(endpoint, options = {}) {
   if (res.status === 401) {
     // 토큰 만료
     setDriveAccessToken(null);
+    showSyncToast('Google Drive 토큰 만료 (재연결 필요)', 'error');
     throw new Error('Google Drive token expired');
   }
   return res;
