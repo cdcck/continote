@@ -19,9 +19,11 @@ export function renderStickerLayer(stickerLayer, viewer, songId) {
 export function createStickerElement(songId, item, viewer) {
   const el = document.createElement('div');
   const isSongform = item.type === 'songform';
+  const isChord = item.type === 'chord';
   const isI = item.label === 'I';
   const isBis = item.label === 'bis';
-  el.className = `sticker ${isSongform ? 'songform' : 'text-memo'} ${isI ? 'part-serif-i' : ''} ${isBis ? 'part-bis' : ''}`;
+  const typeClass = isSongform ? 'songform' : (isChord ? 'chord' : 'text-memo');
+  el.className = `sticker ${typeClass} ${isI ? 'part-serif-i' : ''} ${isBis ? 'part-bis' : ''}`;
   el.style.left = item.x + '%';
   el.style.top = item.y + '%';
   el.textContent = item.label;

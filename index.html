@@ -90,8 +90,8 @@
 
       <!-- 곡 목록에 추가 버튼 (모바일: 아이콘만 / 태블릿 이상: 텍스트 포함) -->
       <button id="addLibrarySongBtn"
-        class="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl border text-xs sm:text-sm font-semibold active:scale-95 transition-all shadow-sm"
-        style="border-color:var(--border);background:var(--surface-2);color:var(--text)"
+        class="items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl border text-xs sm:text-sm font-semibold active:scale-95 transition-all shadow-sm"
+        style="display:none;border-color:var(--border);background:var(--surface-2);color:var(--text)"
         title="곡 목록(악보 보관함)에 새 악보 추가">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
           stroke-linejoin="round" class="w-4 h-4 shrink-0" style="color:var(--accent)">
@@ -110,6 +110,15 @@
         title="현재 곡 번호 / 전체 곡 수">
         1 / 1
       </div>
+
+      <!-- 악보 뷰어 템포(BPM) 표시 및 메트로놈 클릭 사운드 버튼 -->
+      <button id="viewerBpmBtn"
+        class="items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-bold shrink-0 transition-all select-none active:scale-95 cursor-pointer"
+        style="display:none;border-color:var(--border);background:var(--surface-2);color:var(--text)"
+        title="메트로놈 소리 재생/정지">
+        <span class="text-xs leading-none font-bold" style="color:var(--accent)">♩</span>
+        <span id="viewerBpmText">--</span>
+      </button>
 
       <!-- 자물쇠 토글 버튼 -->
       <button id="lockBtn"
@@ -152,9 +161,9 @@
         <div id="headerProfileChip"
           class="flex items-center gap-1.5 p-1 rounded-xl border cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-all"
           style="display:none;border-color:var(--border);background:var(--surface-2)" title="프로필 및 계정 관리">
-          <img id="headerUserAvatar" src="" class="w-6 h-6 rounded-full object-cover shrink-0" alt="" />
+          <img id="headerUserAvatar" referrerpolicy="no-referrer" src="" class="w-6 h-6 rounded-full object-cover shrink-0" alt="" />
           <span id="headerUserName"
-            class="text-xs font-bold max-w-[60px] sm:max-w-[80px] truncate hidden sm:inline"></span>
+            class="text-xs font-bold max-w-[60px] sm:max-w-[100px] truncate hidden sm:inline"></span>
         </div>
       </div>
     </div>
@@ -381,6 +390,24 @@
             </button>
           </div>
         </section>
+
+        <div class="border-t" style="border-color:var(--border)"></div>
+
+        <!-- [사용자 악보 보기: 1곡씩 vs 2곡씩 (양면)] -->
+        <section class="flex items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-bold">사용자 악보 보기</h3>
+            <p class="text-xs mt-0.5" style="color:var(--text-dim)">태블릿/가로 모드 2페이지 나란히 보기</p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button id="viewCount1Btn" class="px-3 sm:px-3.5 py-2 rounded-xl border font-semibold text-xs sm:text-sm active:scale-95 transition-all">
+              1곡씩
+            </button>
+            <button id="viewCount2Btn" class="px-3 sm:px-3.5 py-2 rounded-xl border font-semibold text-xs sm:text-sm active:scale-95 transition-all">
+              2곡씩 (양면)
+            </button>
+          </div>
+        </section>
       </div>
 
       <!-- [2. 송폼 파트 커스텀 추가/삭제 관리] -->
@@ -444,6 +471,17 @@
             </svg>
             <span id="driveStatusText">Google 드라이브 연결</span>
           </button>
+          <button id="driveManualSyncBtn"
+            class="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl border font-semibold text-xs transition-all active:scale-95 shadow-sm"
+            style="border-color:var(--border);background:var(--surface);display:none" title="Google Drive로 현재 모든 콘티와 악보를 즉시 백업합니다">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 text-blue-500">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+              <path d="M16 21h5v-5" />
+            </svg>
+            <span>지금 전체 클라우드 동기화 (수동 백업)</span>
+          </button>
         </section>
 
         <div class="border-t" style="border-color:var(--border)"></div>
@@ -489,25 +527,38 @@
 
       <!-- [상단 1행: 인도자 전용 스티커 부착 바] -->
       <div id="stickerBarRow"
-        class="flex items-center justify-between gap-2 px-3 py-1.5 overflow-x-auto no-scrollbar border-b"
+        class="flex items-center justify-between gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 border-b overflow-hidden select-none"
         style="border-color:var(--border)">
-        <div id="songformChipsList" class="flex flex-nowrap items-center gap-1.5 shrink-0 overflow-x-auto no-scrollbar"></div>
-        <!-- 인도자 전용 스티커 크기 조정 버튼 [- / +] -->
-        <div id="stickerSizeControls" class="flex items-center gap-1 shrink-0 ml-auto pl-1" style="display:none">
+        <!-- 좌측: 가로 스크롤 가능한 스티커 칩 영역 [송폼 칩 목록 + (+ 코드) 팝업 버튼] -->
+        <div class="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <!-- 송폼 칩 목록 -->
+          <div id="songformChipsList" class="flex flex-nowrap items-center gap-1.5 shrink-0"></div>
+          <!-- 코드 팝업 오픈 버튼 -->
+          <button id="openChordModalBtn"
+            class="shrink-0 px-2 sm:px-2.5 py-0.5 rounded-full border text-xs sm:text-sm font-bold transition-all active:scale-95 shadow-sm inline-flex items-center gap-1"
+            style="border-color:var(--accent);color:var(--accent);background:var(--surface-2)"
+            title="코드 스티커 생성 팝업 열기">
+            <span class="text-sm font-black leading-none">+</span>
+            <span>코드</span>
+          </button>
+        </div>
+
+        <!-- 우측: 인도자 전용 스티커 크기 조정 버튼 [- / +] (1~7단계, 기본 3단계) -->
+        <div id="stickerSizeControls" class="flex items-center gap-0.5 sm:gap-1 shrink-0 ml-auto pl-1" style="display:none">
           <button id="stickerSizeDecBtn"
             class="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg border font-bold text-xs sm:text-sm active:scale-95 transition-all"
-            style="border-color:var(--border);background:var(--surface-2)" title="스티커 크기 축소">-</button>
-          <span id="stickerSizeLabel" class="text-[11px] font-bold px-1 min-w-[32px] text-center"
-            style="color:var(--text-dim)">100%</span>
+            style="border-color:var(--border);background:var(--surface-2)" title="스티커 크기 축소 (최소 1단계)">-</button>
+          <span id="stickerSizeLabel" class="text-[11px] sm:text-xs font-bold px-0.5 sm:px-1 min-w-[18px] sm:min-w-[36px] text-center select-none"
+            style="color:var(--text)" title="스티커 크기: 1~7단계 (기본 3단계)"><span>3</span><span class="hidden sm:inline">단계</span></span>
           <button id="stickerSizeIncBtn"
             class="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg border font-bold text-xs sm:text-sm active:scale-95 transition-all"
-            style="border-color:var(--border);background:var(--surface-2)" title="스티커 크기 확대">+</button>
+            style="border-color:var(--border);background:var(--surface-2)" title="스티커 크기 확대 (최대 7단계)">+</button>
         </div>
       </div>
 
       <!-- [하단 2행: 송폼 진행 순서 바] 편집 화면에서는 스티커 바 아래로 단독 행 배치 -->
-      <div id="flowBarRow" class="flex items-center px-3 py-1.5 overflow-x-auto no-scrollbar">
-        <div id="songformFlowDisplayArea" class="flex items-center gap-1.5 shrink-0 min-w-0"></div>
+      <div id="flowBarRow" class="w-full flex items-center px-2 sm:px-3 py-1.5 overflow-x-auto no-scrollbar">
+        <div id="songformFlowDisplayArea" class="w-full flex items-center min-w-0"></div>
       </div>
     </div>
 
@@ -534,8 +585,8 @@
 
       <!-- 줌/팬 적용 대상 무대 컨테이너 -->
       <div id="stageContainer" class="absolute inset-0 origin-top-left touch-none">
-        <!-- 악보 이미지 1:1 밀착 래퍼 컨테이너 (스티커 및 필기 절대 어긋남 방지) -->
-        <div id="sheetContainer">
+        <!-- 슬롯 0: 좌측 악보 (1곡 보기 시 단독 메인 악보) -->
+        <div id="sheetContainer" class="sheet-slot">
           <!-- 1. Base Canvas: 악보 이미지 레이어 (다크 모드 시 선택적 invert) -->
           <canvas id="baseCanvas" class="absolute inset-0 block"></canvas>
 
@@ -544,6 +595,18 @@
 
           <!-- 3. User Drawing Canvas: 개인 펜 필기 레이어 (다크 모드 invert 제외) -->
           <canvas id="userCanvas" class="absolute inset-0 block" style="pointer-events:none"></canvas>
+        </div>
+
+        <!-- 슬롯 1: 우측 악보 (2곡 보기 모드 시 활성화) -->
+        <div id="sheetContainerRight" class="sheet-slot" style="display:none">
+          <!-- 1. Base Canvas (우측 곡) -->
+          <canvas id="baseCanvasRight" class="absolute inset-0 block"></canvas>
+
+          <!-- 2. Sticker DOM Layer (우측 곡) -->
+          <div id="stickerLayerRight" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
+
+          <!-- 3. User Drawing Canvas (우측 곡) -->
+          <canvas id="userCanvasRight" class="absolute inset-0 block" style="pointer-events:none"></canvas>
         </div>
       </div>
 
@@ -558,8 +621,13 @@
         <button id="zoomInBtn"
           class="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm active:scale-95"
           style="background:var(--surface-2)" title="확대" aria-label="확대">+</button>
-        <button id="zoomResetBtn" class="px-2 h-7 rounded-lg text-xs font-semibold active:scale-95 border ml-0.5"
-          style="border-color:var(--border);background:var(--surface-2)" title="100% 원본 크기">리셋</button>
+        <button id="zoomResetBtn" class="w-7 h-7 flex items-center justify-center rounded-lg text-xs font-semibold active:scale-95 border ml-0.5"
+          style="border-color:var(--border);background:var(--surface-2)" title="100% 원본 크기" aria-label="100% 원본 크기 리셋">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+        </button>
       </div>
 
       <!-- 곡 넘김 내비게이션 UI (보기 모드 전용 핫스팟) -->
@@ -1101,7 +1169,13 @@
     <div class="absolute inset-0 modal-backdrop" data-close-textmemo></div>
     <div class="relative w-full max-w-sm rounded-2xl p-4 shadow-2xl z-10" style="background:var(--surface)">
       <h2 class="font-bold mb-2 text-base">악보 텍스트 메모 부착</h2>
-      <p class="text-xs mb-3" style="color:var(--text-dim)">악보 위에 투명한 배경의 볼드 텍스트로 배치됩니다</p>
+      <!-- 2곡 보기 모드 시 대상 곡 선택 바 -->
+      <div id="textMemoSongSelectBar" class="mb-2.5 p-1 rounded-xl border flex gap-1 text-xs font-bold"
+        style="display:none;border-color:var(--border);background:var(--surface-2)">
+        <button id="textMemoSongLeftBtn" type="button" class="flex-1 py-1 rounded-lg transition-all" style="background:var(--accent);color:#fff">1곡</button>
+        <button id="textMemoSongRightBtn" type="button" class="flex-1 py-1 rounded-lg transition-all" style="color:var(--text-dim)">2곡</button>
+      </div>
+
       <textarea id="textMemoInput" rows="3"
         class="w-full px-3 py-2 rounded-xl border bg-transparent text-sm focus:outline-none focus:ring-2 resize-none"
         style="border-color:var(--border);font-family:'Noto Sans KR',sans-serif;font-weight:700"
@@ -1252,6 +1326,13 @@
       </div>
 
       <div class="pt-2 border-t flex gap-2" style="border-color:var(--border)">
+        <button id="songMetaBpmBtn" type="button"
+          class="py-2.5 px-3 rounded-xl border font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all shrink-0 select-none cursor-not-allowed opacity-40 active:scale-95"
+          style="border-color:var(--border);background:var(--surface-2);color:var(--text)"
+          title="템포(BPM) 소리 들어보기" disabled>
+          <span class="text-xs leading-none font-bold" style="color:var(--accent)">♩</span>
+          <span class="hidden sm:inline">BPM</span>
+        </button>
         <button data-close-songmeta class="flex-1 py-2.5 rounded-xl border font-semibold text-sm"
           style="border-color:var(--border);background:var(--surface-2)">취소</button>
         <button id="songMetaSaveBtn" class="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm"
@@ -1294,6 +1375,99 @@
         <button id="confirmAddToContiBtn" class="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm"
           style="background:var(--accent)">
           콘티에 담기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       [인도자 도구] 코드 스티커 생성 및 부착 모달
+       ========================================== -->
+  <div id="chordStickerModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
+    style="display:none">
+    <div class="absolute inset-0 modal-backdrop" data-close-chord-modal></div>
+    <div class="relative w-full max-w-sm rounded-2xl p-4 shadow-2xl z-10 space-y-3.5"
+      style="background:var(--surface)">
+      <!-- 헤더 -->
+      <div class="flex items-center justify-between border-b pb-2.5"
+        style="border-color:var(--border)">
+        <div>
+          <h2 class="font-bold text-base">코드 스티커 추가</h2>
+          <p class="text-xs" style="color:var(--text-dim)">근음과 기호를 선택하고 텍스트를 조합하세요</p>
+        </div>
+        <button data-close-chord-modal class="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5" title="닫기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-5 h-5">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- 1. 텍스트 입력창 -->
+      <div>
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">코드 텍스트 (직접 타이핑 가능)</label>
+        <div class="flex items-center gap-1.5 w-full">
+          <input id="chordStickerInput" type="text" placeholder="예: C, Am7, F#sus4, G/B"
+            class="flex-1 min-w-0 px-3 py-2 rounded-xl border text-sm sm:text-base font-bold outline-none focus:ring-2"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" autofocus />
+          <button id="chordStickerBackspaceBtn" type="button"
+            class="px-2.5 py-2 rounded-xl border text-sm font-bold active:scale-95 transition-all shrink-0"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" title="한 글자 지우기">⌫</button>
+          <button id="chordStickerClearBtn" type="button"
+            class="px-2.5 py-2 rounded-xl border text-xs font-semibold active:scale-95 transition-all shrink-0"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text-dim)" title="전체 지우기">초기화</button>
+        </div>
+      </div>
+
+      <!-- 2. 근음 버튼 (C, D, E, F, G, A, B) -->
+      <div>
+        <label class="block text-xs font-semibold mb-1.5" style="color:var(--text-dim)">근음 (Root)</label>
+        <div class="grid grid-cols-7 gap-1">
+          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="C">C</button>
+          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="D">D</button>
+          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="E">E</button>
+          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="F">F</button>
+          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="G">G</button>
+          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="A">A</button>
+          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="B">B</button>
+        </div>
+      </div>
+
+      <!-- 3. 변화표 및 슬래시 버튼 (#, ♭, /) -->
+      <div>
+        <label class="block text-xs font-semibold mb-1.5" style="color:var(--text-dim)">변화표 및 베이스</label>
+        <div class="grid grid-cols-3 gap-1.5">
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="#"># (Sharp)</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="♭">♭ (Flat)</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="/">/ (Slash)</button>
+        </div>
+      </div>
+
+      <!-- 4. 스티커 실시간 미리보기 -->
+      <div>
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">악보 위 표시 미리보기</label>
+        <div class="p-3 rounded-xl border flex items-center justify-center min-h-[46px]"
+          style="background:var(--surface-2);border-color:var(--border)">
+          <span id="chordStickerPreview" class="sticker chord" style="position:static;transform:none">C</span>
+        </div>
+      </div>
+
+      <!-- 5. 하단 버튼 -->
+      <div class="pt-2 border-t flex gap-2" style="border-color:var(--border)">
+        <button data-close-chord-modal class="flex-1 py-2.5 rounded-xl border font-semibold text-sm"
+          style="border-color:var(--border);background:var(--surface-2)">취소</button>
+        <button id="chordStickerAddBtn" class="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all"
+          style="background:var(--accent)">
+          악보에 부착
         </button>
       </div>
     </div>

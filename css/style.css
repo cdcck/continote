@@ -194,6 +194,32 @@ html.dark #baseCanvas {
   height: calc(20px * var(--scale-factor));
 }
 
+/* 코드 스티커: 악보와 자연스럽게 어우러지는 불투명 칩 스타일 (가독성을 위해 배경을 가림) */
+.sticker.chord {
+  --scale-factor: calc(var(--sheet-scale, 1) * var(--sticker-scale, 1));
+  padding: calc(1.5px * var(--scale-factor)) calc(5px * var(--scale-factor)) !important;
+  border-radius: calc(4px * var(--scale-factor));
+  background: #ffffff;
+  color: #111827;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: calc(14px * var(--scale-factor)) !important;
+  font-weight: 800;
+  line-height: 1.15 !important;
+  border: calc(1.2px * var(--scale-factor)) solid #374151;
+  box-shadow: 0 calc(1px * var(--scale-factor)) calc(3px * var(--scale-factor)) rgba(0, 0, 0, 0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: -0.02em;
+}
+
+.dark .sticker.chord {
+  background: #1f2937;
+  color: #f9fafb;
+  border-color: #6b7280;
+  box-shadow: 0 calc(1px * var(--scale-factor)) calc(3px * var(--scale-factor)) rgba(0, 0, 0, 0.5);
+}
+
 /* 텍스트 메모: 투명한 배경에 Noto Sans KR Bold 텍스트만 표시 */
 .sticker.text-memo {
   --scale-factor: calc(var(--sheet-scale, 1) * var(--sticker-scale, 1));
@@ -563,7 +589,9 @@ html.dark #viewer::-webkit-scrollbar-thumb:hover {
 }
 
 /* 악보 이미지 1:1 밀착 컨테이너 (스티커 및 필기 절대 어긋남 방지) */
-#sheetContainer {
+#sheetContainer,
+#sheetContainerRight,
+.sheet-slot {
   position: absolute;
   transform-origin: 0 0;
   pointer-events: auto;
@@ -596,3 +624,39 @@ html.dark #viewer::-webkit-scrollbar-thumb:hover {
   background-color: var(--accent) !important;
   color: #ffffff !important;
 }
+
+/* ==========================================
+   메트로놈(BPM) 사운드 재생 시각적 피드백
+   ========================================== */
+.metronome-playing {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 10px rgba(234, 88, 12, 0.4);
+}
+.metronome-playing span,
+.metronome-playing svg {
+  color: #ffffff !important;
+}
+
+@keyframes metronome-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+.metronome-tick {
+  animation: metronome-pulse 0.12s ease-in-out;
+}
+
+@keyframes metronome-pulse-downbeat {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+.metronome-tick-downbeat {
+  animation: metronome-pulse-downbeat 0.16s ease-in-out;
+}
+
+

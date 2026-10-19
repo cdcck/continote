@@ -10,16 +10,20 @@ import { getDB, idbGet, idbPut, idbGetAll } from './db.js';
 const DRIVE_FOLDER_NAME = 'Continote';
 const INDEX_FILE_NAME = 'contis_index.json';
 const TOKEN_STORAGE_KEY = 'continote_gdrive_token';
+const TOKEN_EXPIRES_KEY = 'continote_gdrive_token_expires';
 
 let cachedFolderId = null;
 let syncToastTimeout = null;
 
-// 토큰 관리
-export function setDriveAccessToken(token) {
+// 토큰 관리 (localStorage에 보관하여 탭 닫힘/새로고침에도 1시간 동안 유지)
+export function setDriveAccessToken(token, expiresIn = 3600) {
   if (token) {
-    sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    const expiresAt = Date.now() + (Number(expiresIn) || 3600) * 1000;
+    localStorage.setItem(TOKEN_EXPIRES_KEY, String(expiresAt));
   } else {
-    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_EXPIRES_KEY);
   }
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('continote:drive-auth-changed', {
@@ -29,7 +33,16 @@ export function setDriveAccessToken(token) {
 }
 
 export function getDriveAccessToken() {
-  return sessionStorage.getItem(TOKEN_STORAGE_KEY) || null;
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (!token) return null;
+  const expiresAt = Number(localStorage.getItem(TOKEN_EXPIRES_KEY) || 0);
+  // 만료 시간 60초 전까지 안전하게 유효한 것으로 처리
+  if (expiresAt && Date.now() > expiresAt - 60000) {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_EXPIRES_KEY);
+    return null;
+  }
+  return token;
 }
 
 export function hasDriveAuth() {
@@ -97,6 +110,11 @@ async function driveApi(endpoint, options = {}) {
     showSyncToast('Google Drive 토큰 만료 (재연결 필요)', 'error');
     throw new Error('Google Drive token expired');
   }
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error(`Drive API error [${res.status}]:`, errText);
+    throw new Error(`Drive API error [${res.status}]: ${errText}`);
+  }
   return res;
 }
 
@@ -136,45 +154,69 @@ async function findFileInAppFolder(fileName) {
   return (data.files && data.files.length > 0) ? data.files[0] : null;
 }
 
-// JSON 파일 업로드 / 덮어쓰기
+// JSON 파일 업로드 / 덮어쓰기 (Google Drive Resumable Upload 표준 적용 - 대용량 악보 JSON 100% 보장)
 async function uploadJsonFile(fileName, jsonData) {
   const folderId = await getOrCreateContinoteFolder();
   const existingFile = await findFileInAppFolder(fileName);
   const jsonBlob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' });
 
-  if (existingFile) {
-    // 기존 파일 내용 업데이트 (PATCH)
-    const updateRes = await driveApi(`https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media`, {
+  let fileId = existingFile ? existingFile.id : null;
+
+  if (!fileId) {
+    // 1단계: 파일 메타데이터 생성 (파일 이름 및 Continote 부모 폴더 지정)
+    const createRes = await driveApi('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: fileName,
+        parents: [folderId],
+        mimeType: 'application/json'
+      })
+    });
+    const fileObj = await createRes.json();
+    fileId = fileObj.id;
+  }
+
+  // 2단계: Resumable Upload 세션 시작 (용량 무제한, 안전한 데이터 전송)
+  const token = getDriveAccessToken();
+  const initRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json; charset=UTF-8',
+      'X-Upload-Content-Type': 'application/json',
+      'X-Upload-Content-Length': String(jsonBlob.size)
+    }
+  });
+
+  if (initRes.status === 401) {
+    setDriveAccessToken(null);
+    throw new Error('Google Drive token expired');
+  }
+
+  const uploadLocation = initRes.headers.get('Location');
+  if (uploadLocation) {
+    // 세션 URL로 실제 Blob 데이터 전송 (PUT)
+    const putRes = await fetch(uploadLocation, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: jsonBlob
+    });
+    if (!putRes.ok) {
+      const errText = await putRes.text();
+      throw new Error(`Drive 미디어 업로드 실패 [${putRes.status}]: ${errText}`);
+    }
+    return await putRes.json();
+  } else {
+    // Resumable Location 헤더가 없는 환경을 위한 Direct Media 업로드 폴백
+    const mediaRes = await driveApi(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: jsonBlob
     });
-    return await updateRes.json();
-  } else {
-    // 신규 파일 생성 (Multipart POST)
-    const metadata = {
-      name: fileName,
-      parents: [folderId],
-      mimeType: 'application/json'
-    };
-
-    const boundary = 'continote_sync_boundary_' + Date.now();
-    const delimiter = `--${boundary}\r\n`;
-    const closeDelimiter = `\r\n--${boundary}--`;
-
-    const metaPart = `Content-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`;
-    const dataPart = `Content-Type: application/json\r\n\r\n${JSON.stringify(jsonData, null, 2)}\r\n`;
-
-    const multipartBody = delimiter + metaPart + delimiter + dataPart + closeDelimiter;
-
-    const createRes = await driveApi('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-      method: 'POST',
-      headers: {
-        'Content-Type': `multipart/related; boundary=${boundary}`
-      },
-      body: multipartBody
-    });
-    return await createRes.json();
+    return await mediaRes.json();
   }
 }
 
@@ -288,10 +330,6 @@ export async function syncContiDetailFromDrive(contiId) {
   if (!hasDriveAuth() || !contiId) return null;
 
   const conti = state.contis.find(c => c.id === contiId);
-  // 이미 로컬에 곡이 존재하고 추가 동기화 플래그가 없으면 즉시 반환 (불필요한 네트워크 절약)
-  if (conti && conti.songs && conti.songs.length > 0 && !conti._needDetailSync) {
-    return conti;
-  }
 
   try {
     showSyncToast('악보 데이터 동기화 중...', 'loading');
@@ -303,6 +341,12 @@ export async function syncContiDetailFromDrive(contiId) {
       if (conti && conti.songs && conti.songs.length > 0) {
         await syncContiDetailToDrive(contiId, false);
       }
+      showSyncToast('악보 동기화 완료', 'success');
+      return conti;
+    }
+
+    // 드라이브에 파일이 이미 있고, 로컬에도 곡이 존재하며 추가 동기화 플래그가 없으면 로컬 캐시 즉시 사용
+    if (conti && conti.songs && conti.songs.length > 0 && !conti._needDetailSync) {
       showSyncToast('악보 동기화 완료', 'success');
       return conti;
     }
@@ -351,10 +395,22 @@ export async function syncContiDetailToDrive(contiId, showToast = true) {
 
   try {
     if (showToast) showSyncToast('악보 데이터 백업 중...', 'loading');
-    const conti = state.contis.find(c => c.id === contiId);
+    let conti = state.contis.find(c => c.id === contiId);
+    if (!conti) {
+      conti = await idbGet('contis', contiId);
+    }
     if (!conti) return;
 
-    const songs = (state.currentContiId === contiId && state.songs.length) ? state.songs : (conti.songs || []);
+    let songs = (state.currentContiId === contiId && state.songs && state.songs.length)
+      ? state.songs
+      : (conti.songs && conti.songs.length ? conti.songs : []);
+
+    if (!songs.length) {
+      const dbConti = await idbGet('contis', contiId);
+      if (dbConti && dbConti.songs && dbConti.songs.length) {
+        songs = dbConti.songs;
+      }
+    }
 
     const detailData = {
       id: conti.id,
@@ -373,7 +429,7 @@ export async function syncContiDetailToDrive(contiId, showToast = true) {
     conti.updatedAt = detailData.updatedAt;
     conti._needDetailSync = false;
 
-    // 1. 해당 콘티 전용 파일 업로드
+    // 1. 해당 콘티 전용 파일 업로드 (conti_{id}.json)
     await uploadJsonFile(`conti_${contiId}.json`, detailData);
 
     // 2. 전체 콘티 목록 index도 함께 갱신
@@ -382,5 +438,111 @@ export async function syncContiDetailToDrive(contiId, showToast = true) {
     if (showToast) showSyncToast('Google Drive 저장 완료', 'success');
   } catch (err) {
     console.warn('콘티 상세 Drive 업로드 실패:', err);
+    if (showToast) showSyncToast('악보 백업 실패: ' + (err.message || ''), 'error');
+  }
+}
+
+// 로컬에 이미 곡이 있는 콘티들이 드라이브에 누락되어 있다면 자동 일괄 백업
+export async function syncAllContisDetailToDrive(showToast = false) {
+  if (!hasDriveAuth()) return;
+  try {
+    const localContis = await idbGetAll('contis');
+    let uploadedCount = 0;
+    for (const c of localContis) {
+      const songs = (state.currentContiId === c.id && state.songs && state.songs.length) ? state.songs : (c.songs || []);
+      if (songs.length > 0) {
+        await syncContiDetailToDrive(c.id, false);
+        uploadedCount++;
+      }
+    }
+    if (showToast && uploadedCount > 0) {
+      showSyncToast(`${uploadedCount}개 콘티 악보 백업 완료`, 'success');
+    }
+  } catch (err) {
+    console.warn('콘티 악보 일괄 백업 실패:', err);
+  }
+}
+
+/* ==================================================
+   [3단계] 마스터 악보 보관함 클라우드 동기화 (library.json)
+   ================================================== */
+const LIBRARY_FILE_NAME = 'library.json';
+
+export async function syncLibraryFromDrive() {
+  if (!hasDriveAuth()) return state.allSongs;
+
+  try {
+    const libFile = await findFileInAppFolder(LIBRARY_FILE_NAME);
+    if (!libFile) {
+      // 드라이브에 아직 라이브러리가 없으면 로컬 라이브러리 최초 업로드
+      const localLib = (state.allSongs && state.allSongs.length) ? state.allSongs : (await idbGetAll('library'));
+      if (localLib && localLib.length > 0) {
+        await syncLibraryToDrive(localLib, false);
+      }
+      return state.allSongs;
+    }
+
+    const driveLibrary = await downloadJsonFile(libFile.id);
+    if (!Array.isArray(driveLibrary)) return state.allSongs;
+
+    const localMap = new Map((state.allSongs || []).map(s => [s.id, s]));
+    for (const remoteSong of driveLibrary) {
+      if (!localMap.has(remoteSong.id)) {
+        localMap.set(remoteSong.id, remoteSong);
+        await idbPut('library', remoteSong);
+      }
+    }
+
+    state.allSongs = Array.from(localMap.values());
+    state.allSongs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return state.allSongs;
+  } catch (err) {
+    console.warn('라이브러리 Drive 동기화 실패:', err);
+    return state.allSongs;
+  }
+}
+
+export async function syncLibraryToDrive(libraryList = null, showToast = true) {
+  if (!hasDriveAuth()) return;
+  try {
+    if (showToast) showSyncToast('악보 보관함 백업 중...', 'loading');
+    let data = libraryList || state.allSongs || [];
+    if (!data.length) {
+      data = await idbGetAll('library');
+    }
+    if (data.length > 0) {
+      await uploadJsonFile(LIBRARY_FILE_NAME, data);
+      if (showToast) showSyncToast('악보 보관함 백업 완료', 'success');
+    }
+  } catch (err) {
+    console.warn('악보 보관함 Drive 업로드 실패:', err);
+    if (showToast) showSyncToast('보관함 백업 실패: ' + (err.message || ''), 'error');
+  }
+}
+
+// 전체 데이터 원클릭 동기화 (콘티 목록 + 악보 상세 + 마스터 보관함)
+export async function runFullDriveSync(showToast = true) {
+  if (!hasDriveAuth()) return;
+  try {
+    if (showToast) showSyncToast('클라우드 전체 동기화 중...', 'loading');
+    // 1. 콘티 목록 인덱스 백업
+    await syncContisIndexToDrive(state.contis, false);
+    // 2. 콘티별 상세 악보 백업
+    const localContis = await idbGetAll('contis');
+    for (const c of localContis) {
+      const songs = (state.currentContiId === c.id && state.songs && state.songs.length) ? state.songs : (c.songs || []);
+      if (songs.length > 0) {
+        await syncContiDetailToDrive(c.id, false);
+      }
+    }
+    // 3. 마스터 악보 보관함 백업
+    const localLib = (state.allSongs && state.allSongs.length) ? state.allSongs : (await idbGetAll('library'));
+    if (localLib && localLib.length > 0) {
+      await syncLibraryToDrive(localLib, false);
+    }
+    if (showToast) showSyncToast('Google Drive 전체 동기화 완료!', 'success');
+  } catch (err) {
+    console.warn('전체 Drive 동기화 실패:', err);
+    if (showToast) showSyncToast('동기화 오류: ' + (err.message || ''), 'error');
   }
 }

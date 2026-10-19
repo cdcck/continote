@@ -22,7 +22,9 @@ export const state = {
   penColor: '#2B2730',
   penSize: 3,
   eraseMode: false,
-  stickerScale: 1.0, // 송폼 스티커 배율 (기본 1.0 = 100%)
+  stickerStep: 3, // 스티커 크기 단계 (총 7단계, 기본 3단계: 1.0x)
+  stickerScale: 1.0, // 송폼/코드 스티커 배율
+  viewSheetCount: 1, // 사용자 메뉴 악보 보기: 1 (1곡씩) | 2 (2곡씩 나란히)
   cropTarget: null,
   cropMode: 'auto', // 'auto' | 'manual'
   cropAutoBox: null,
@@ -66,7 +68,9 @@ export function loadPreferences() {
     navDirection: 'horizontal',
     songformLabels: ['A', 'B', 'C', 'D', 'bis', 'I', 'O'],
     themes: ['은혜', '찬양', '감사', '회개', '결단', '십자가', '부흥', '승리'],
-    stickerScale: 1.0
+    stickerStep: 3,
+    stickerScale: 1.0,
+    viewSheetCount: 1
   };
 }
 
@@ -77,7 +81,9 @@ export function savePreferences() {
       navDirection: state.navDirection,
       songformLabels: state.songformLabels,
       themes: state.themes,
-      stickerScale: state.stickerScale || 1.0
+      stickerStep: state.stickerStep || 3,
+      stickerScale: state.stickerScale || 1.0,
+      viewSheetCount: state.viewSheetCount || 1
     }));
   } catch (e) {
     console.warn('설정 저장 실패:', e);

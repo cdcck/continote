@@ -18,21 +18,23 @@ export function clearCanvases(sheetContainer, baseCanvas, userCanvas) {
   }
 }
 
-export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song) {
+export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds = null) {
   return new Promise((resolve) => {
     if (!song || !baseCanvas || !viewer || !sheetContainer) return resolve();
     const img = new Image();
     img.onload = () => {
-      const vw = viewer.clientWidth;
-      const vh = viewer.clientHeight;
-      if (vw === 0 || vh === 0) return resolve();
+      const areaX = bounds ? bounds.x : 0;
+      const areaY = bounds ? bounds.y : 0;
+      const areaW = bounds ? bounds.w : viewer.clientWidth;
+      const areaH = bounds ? bounds.h : viewer.clientHeight;
+      if (areaW <= 0 || areaH <= 0) return resolve();
 
-      // 악보 종횡비 유지 계산 (가로는 가운데 정렬, 세로는 상단 여백 없이 위로 밀착)
-      const scale = Math.min(vw / img.width, vh / img.height);
+      // 악보 종횡비 유지 계산 (가로는 지정 영역 가운데 정렬, 세로는 상단 여백 없이 위로 밀착)
+      const scale = Math.min(areaW / img.width, areaH / img.height);
       const dw = Math.floor(img.width * scale);
       const dh = Math.floor(img.height * scale);
-      const dx = Math.floor((vw - dw) / 2);
-      const dy = 0; // 악보 위에 여백을 없애고 위로 딱 밀착
+      const dx = areaX + Math.floor((areaW - dw) / 2);
+      const dy = areaY; // 악보 위에 여백을 없애고 위로 딱 밀착
 
       currentSheetRect = { x: dx, y: dy, w: dw, h: dh };
 
