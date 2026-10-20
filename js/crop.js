@@ -74,12 +74,36 @@ export function computeAutoCropBox(img) {
 }
 
 export function renderCroppedDataURL(img, box) {
+  const maxDim = 1800;
+  let targetW = Math.max(1, Math.round(box.w));
+  let targetH = Math.max(1, Math.round(box.h));
+
+  // 악보 가독성에 충분한 최대 1800px 해상도로 스마트 다운스케일
+  if (targetW > maxDim || targetH > maxDim) {
+    if (targetW > targetH) {
+      targetH = Math.round((targetH * maxDim) / targetW);
+      targetW = maxDim;
+    } else {
+      targetW = Math.round((targetW * maxDim) / targetH);
+      targetH = maxDim;
+    }
+  }
+
   const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.round(box.w));
-  c.height = Math.max(1, Math.round(box.h));
+  c.width = targetW;
+  c.height = targetH;
   const ctx = c.getContext('2d');
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, box.x, box.y, box.w, box.h, 0, 0, c.width, c.height);
-  return c.toDataURL('image/png');
+
+  try {
+    const webp = c.toDataURL('image/webp', 0.85);
+    if (webp.startsWith('data:image/webp')) return webp;
+  } catch (_) {}
+  return c.toDataURL('image/jpeg', 0.85);
 }
 
 export function syncCropBoxDOM(cropBox, cropDisplayImg, cropTarget, manualBox) {

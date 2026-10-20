@@ -4,6 +4,7 @@
 
 import { state } from './state.js';
 import { saveStickers } from './db.js';
+import { debounceSyncContiDetail } from './drive.js';
 
 export function renderStickerLayer(stickerLayer, viewer, songId) {
   if (!stickerLayer) return;
@@ -98,6 +99,7 @@ export function createStickerElement(songId, item, viewer) {
         el.releasePointerCapture(e.pointerId);
       } catch (_) { }
       saveStickers(songId);
+      if (state.currentContiId) debounceSyncContiDetail(state.currentContiId);
     } else if (!moved && !longPressed) {
       // 롱프레스가 아닌 일반 탭/클릭 시 삭제 뱃지 토글
       if (el.querySelector('.del-badge')) {
@@ -129,6 +131,7 @@ export function showStickerDeleteBadge(el, songId, item) {
     if (idx !== -1) {
       list.splice(idx, 1);
       saveStickers(songId);
+      if (state.currentContiId) debounceSyncContiDetail(state.currentContiId);
     }
     el.remove();
   };

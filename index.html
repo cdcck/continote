@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport"
-    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>ContiNote</title>
   <link rel="icon"
     href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%BC%3C/text%3E%3C/svg%3E" />
@@ -1006,7 +1006,7 @@
   <!-- ==========================================
        [인도자 도구] 악보 목록 & 순서 관리 모달
        ========================================== -->
-  <div id="songManagerModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center select-none"
+  <div id="songManagerModal" class="app-modal fixed inset-0 z-50 flex items-end sm:items-center justify-center select-none"
     style="display:none">
     <div class="absolute inset-0 modal-backdrop" data-close-song-manager></div>
     <div class="relative w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl flex flex-col shadow-2xl overflow-hidden z-10"
@@ -1047,7 +1047,7 @@
        [인도자 도구] 곡 별 송폼 순서(Flow) 스텝 바이 스텝 지정 모달
        - A1 입력 -> 다음 -> A1 > 생기고 A2 입력하는 형태
        ========================================== -->
-  <div id="songformOrderModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center select-none"
+  <div id="songformOrderModal" class="app-modal fixed inset-0 z-50 flex items-end sm:items-center justify-center select-none"
     style="display:none">
     <div class="absolute inset-0 modal-backdrop" data-close-songform-order></div>
     <div class="relative w-full max-w-[95vw] sm:max-w-lg sm:rounded-2xl rounded-t-2xl flex flex-col shadow-2xl overflow-hidden z-10"
@@ -1130,7 +1130,7 @@
   <!-- ==========================================
        [인도자 도구] 새 콘티 만들기 / 수정 모달
        ========================================== -->
-  <div id="contiModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center select-none"
+  <div id="contiModal" class="app-modal fixed inset-0 z-50 flex items-end sm:items-center justify-center select-none"
     style="display:none">
     <div class="absolute inset-0 modal-backdrop" data-close-conti-modal></div>
     <div class="relative w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl flex flex-col shadow-2xl overflow-hidden z-10"
@@ -1178,7 +1178,7 @@
   <!-- ==========================================
        [사용자 도구] 텍스트 메모 입력 모달
        ========================================== -->
-  <div id="textMemoModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
+  <div id="textMemoModal" class="app-modal fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
     style="display:none">
     <div class="absolute inset-0 modal-backdrop" data-close-textmemo></div>
     <div class="relative w-full max-w-sm rounded-2xl p-4 shadow-2xl z-10" style="background:var(--surface)">
@@ -1210,7 +1210,7 @@
   <!-- ==========================================
        [인도자 도구] 콘티 공유 모달 (이메일 공유 & 공유 링크)
        ========================================== -->
-  <div id="shareModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 select-none" style="display:none">
+  <div id="shareModal" class="app-modal fixed inset-0 z-50 flex items-center justify-center p-4 select-none" style="display:none">
     <div class="absolute inset-0 modal-backdrop" data-close-share-modal></div>
     <div class="relative w-full max-w-sm rounded-2xl p-4 shadow-2xl z-10 space-y-4 max-h-[85vh] overflow-y-auto"
       style="background:var(--surface)">
@@ -1267,7 +1267,7 @@
   <!-- ==========================================
        [인도자 도구] 신규 곡 메타데이터 입력 모달 (코드, 박자, 템포, 주제)
        ========================================== -->
-  <div id="songMetaModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
+  <div id="songMetaModal" class="app-modal fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
     style="display:none">
     <div class="absolute inset-0 modal-backdrop" data-close-songmeta></div>
     <div
@@ -1372,7 +1372,7 @@
   <!-- ==========================================
        [인도자 도구] 악보 보관함 -> 내 콘티로 추가 모달
        ========================================== -->
-  <div id="addToContiModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
+  <div id="addToContiModal" class="app-modal fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
     style="display:none">
     <div class="absolute inset-0 modal-backdrop" data-close-add-to-conti></div>
     <div class="relative w-full max-w-sm rounded-2xl p-4 shadow-2xl z-10 space-y-3.5 max-h-[85vh] overflow-y-auto"
@@ -1409,7 +1409,7 @@
   <!-- ==========================================
        [인도자 도구] 코드 스티커 생성 및 부착 모달
        ========================================== -->
-  <div id="chordStickerModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
+  <div id="chordStickerModal" class="app-modal fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
     style="display:none">
     <div class="absolute inset-0 modal-backdrop" data-close-chord-modal></div>
     <div class="relative w-full max-w-sm rounded-2xl p-4 shadow-2xl z-10 space-y-3.5"
@@ -1502,7 +1502,7 @@
   <!-- ==========================================
        모듈화된 메인 엔트리 스크립트 (ES Module)
        ========================================== -->
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/app.js?v=20261020_05"></script>
 </body>
 
 </html>

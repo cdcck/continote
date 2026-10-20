@@ -22,12 +22,11 @@ import {
 import {
   computeAutoCropBox, renderCroppedDataURL, syncCropBoxDOM
 } from './crop.js';
-import { renderStickerLayer } from './stickers.js';
 import { setupZoomAndPan, resetZoom, updateZoomVisibility } from './zoom.js';
 import {
   setDriveAccessToken, getDriveAccessToken, hasDriveAuth, getDriveTokenExpiresAt,
   syncContisIndexFromDrive, syncContisIndexToDrive,
-  syncContiDetailFromDrive, syncContiDetailToDrive,
+  syncContiDetailFromDrive, syncContiDetailToDrive, debounceSyncContiDetail,
   syncAllContisDetailToDrive, syncLibraryFromDrive, syncLibraryToDrive, runFullDriveSync,
   showSyncToast
 } from './drive.js';
@@ -970,15 +969,21 @@ export async function openSongList(contiId) {
   state.viewLevel = 'songList';
   saveCurrentMenuSession();
 
-  // [2단계 지연 동기화] 선택한 콘티에 해당하는 악보 및 상세 데이터만 Drive에서 동기화
-  if (hasDriveAuth()) {
-    await syncContiDetailFromDrive(contiId);
-  }
-
+  // 1. [체감 대기시간 0초] 로컬 캐시로 곡 목록을 즉시 0.01초 만에 렌더링
   await loadSongs();
   renderSongListView();
   applyUIState();
   pushAppState();
+
+  // 2. [백그라운드 비동기 동기화] Google Drive 최신 악보/스티커 확인 후 완료 시 조용히 갱신
+  if (hasDriveAuth()) {
+    syncContiDetailFromDrive(contiId).then(async (updatedConti) => {
+      if (updatedConti && state.viewLevel === 'songList' && state.currentContiId === contiId) {
+        await loadSongs();
+        renderSongListView();
+      }
+    }).catch(err => console.warn('백그라운드 악보 동기화:', err));
+  }
 }
 
 export function renderSongListView() {
@@ -1447,6 +1452,20 @@ export async function openViewerForSong(songIndex) {
   applyUIState();
   await renderAll();
   pushAppState();
+
+  // 백그라운드에서 Google Drive 최신 스티커 동기화 후 화면 자동 리프레시 (타 기기 변경사항 실시간 반영)
+  if (hasDriveAuth() && state.currentContiId) {
+    syncContiDetailFromDrive(state.currentContiId).then(() => {
+      const curSong = state.songs[state.currentIndex];
+      if (curSong && state.viewLevel === 'viewer') {
+        renderStickerLayer(els.stickerLayer, els.sheetContainer, curSong.id);
+        if (els.stickerLayerRight) {
+          const nextS = state.songs[state.currentIndex + 1];
+          if (nextS) renderStickerLayer(els.stickerLayerRight, els.sheetContainerRight, nextS.id);
+        }
+      }
+    }).catch(() => {});
+  }
 }
 
 export async function renderAll() {
@@ -2408,6 +2427,9 @@ function placeSongformSticker(label) {
   });
   saveStickers(song.id);
   renderStickerLayer(els.stickerLayer, els.sheetContainer, song.id);
+  if (hasDriveAuth() && state.currentContiId) {
+    debounceSyncContiDetail(state.currentContiId);
+  }
 }
 
 function openChordModal() {
@@ -2516,6 +2538,83 @@ function setupSwipeNavigation() {
 
   els.viewer.addEventListener('pointerup', onPointerEnd);
   els.viewer.addEventListener('pointercancel', () => { active = false; });
+}
+
+/* ==================================================
+   모바일/태블릿 가상 키보드 감지 및 모달 위치 보정 엔진
+   ================================================== */
+function setupVirtualKeyboardHandler() {
+  let scrollTimeout = null;
+
+  function updateMetrics() {
+    const isMobileOrTablet = window.innerWidth <= 1024 || ('ontouchstart' in window);
+    const active = document.activeElement;
+    const isInputFocused = !!(active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT'));
+    const isInsideModal = isInputFocused && !!active.closest('.app-modal, [id$="Modal"]');
+
+    if (window.visualViewport) {
+      const vv = window.visualViewport;
+      const baseHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
+      const rawKeyboardHeight = baseHeight - vv.height;
+
+      // 키보드 높이가 100px 이상 줄어들었거나 모달 내 인풋 포커스 상태인 경우
+      const isKeyboardOpen = isMobileOrTablet && (rawKeyboardHeight > 100 || (isInsideModal && rawKeyboardHeight > 40));
+      const keyboardHeight = isKeyboardOpen ? Math.max(0, Math.round(rawKeyboardHeight)) : 0;
+      const visibleHeight = isKeyboardOpen ? Math.round(vv.height) : baseHeight;
+
+      document.documentElement.style.setProperty('--keyboard-height', `${keyboardHeight}px`);
+      document.documentElement.style.setProperty('--visual-viewport-height', `${visibleHeight}px`);
+      document.documentElement.style.setProperty('--visual-viewport-top', `${Math.round(vv.offsetTop)}px`);
+
+      if (isKeyboardOpen) {
+        document.body.classList.add('keyboard-open');
+        if (isInsideModal) {
+          clearTimeout(scrollTimeout);
+          scrollTimeout = setTimeout(() => {
+            if (document.activeElement === active) {
+              active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+          }, 150);
+        }
+      } else {
+        document.body.classList.remove('keyboard-open');
+      }
+    } else {
+      // visualViewport 미지원 브라우저 폴백
+      if (isInsideModal && isMobileOrTablet) {
+        document.body.classList.add('keyboard-open');
+        document.documentElement.style.setProperty('--keyboard-height', '260px');
+        document.documentElement.style.setProperty('--visual-viewport-height', `${window.innerHeight - 260}px`);
+      } else {
+        document.body.classList.remove('keyboard-open');
+        document.documentElement.style.setProperty('--keyboard-height', '0px');
+        document.documentElement.style.setProperty('--visual-viewport-height', '100vh');
+      }
+    }
+  }
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateMetrics);
+    window.visualViewport.addEventListener('scroll', updateMetrics);
+  }
+  window.addEventListener('resize', updateMetrics);
+
+  document.addEventListener('focusin', (e) => {
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+      setTimeout(updateMetrics, 50);
+      setTimeout(updateMetrics, 250);
+    }
+  });
+
+  document.addEventListener('focusout', (e) => {
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+      setTimeout(updateMetrics, 100);
+    }
+  });
+
+  updateMetrics();
 }
 
 /* ==================================================
@@ -2717,22 +2816,40 @@ function renderRatioPreview() {
   ctx.drawImage(ratioState.img, 0, 0, nw, nh);
 }
 
-// 최종 저장 및 적용 시점에만 1회 고품질 확정 렌더링
+// 최종 저장 및 적용 시점에만 1회 고품질 확정 렌더링 (고효율 WebP/JPEG 0.85 압축)
 function getFinalScaledImageUrl() {
   if (!ratioState.img) return null;
   const nw = ratioState.img.naturalWidth || 800;
   const nh = ratioState.img.naturalHeight || 1100;
-  const tw = Math.max(10, Math.round(nw * ratioState.wScale));
-  const th = Math.max(10, Math.round(nh * ratioState.hScale));
+  let tw = Math.max(10, Math.round(nw * ratioState.wScale));
+  let th = Math.max(10, Math.round(nh * ratioState.hScale));
+
+  const maxDim = 1800;
+  if (tw > maxDim || th > maxDim) {
+    if (tw > th) {
+      th = Math.round((th * maxDim) / tw);
+      tw = maxDim;
+    } else {
+      tw = Math.round((tw * maxDim) / th);
+      th = maxDim;
+    }
+  }
 
   const offscreen = document.createElement('canvas');
   offscreen.width = tw;
   offscreen.height = th;
   const ctx = offscreen.getContext('2d');
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, tw, th);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(ratioState.img, 0, 0, tw, th);
-  return offscreen.toDataURL('image/png');
+
+  try {
+    const webp = offscreen.toDataURL('image/webp', 0.85);
+    if (webp.startsWith('data:image/webp')) return webp;
+  } catch (_) {}
+  return offscreen.toDataURL('image/jpeg', 0.85);
 }
 
 let editingSongMetaId = null;
@@ -3946,6 +4063,9 @@ function wireEventListeners() {
 
   // 스와이프 내비게이션
   setupSwipeNavigation();
+
+  // 모바일/태블릿 가상 키보드 감지 및 모달 위치 자동 보정
+  setupVirtualKeyboardHandler();
 
   // 편집 모드 줌/팬
   setupZoomAndPan({

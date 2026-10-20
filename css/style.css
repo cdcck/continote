@@ -491,11 +491,60 @@ input[type="range"] {
   -webkit-backdrop-filter: blur(4px);
 }
 
+/* ========================================================
+   [모바일/태블릿 가상 키보드 대응 모달 자동 위치 및 높이 보정]
+   - 키보드가 올라올 때 모달이 가려지지 않고 키보드 위 가용 영역으로 자동 이동
+   ======================================================== */
+:root {
+  --keyboard-height: 0px;
+  --visual-viewport-height: 100vh;
+  --visual-viewport-top: 0px;
+}
+
+.app-modal {
+  height: 100%;
+  height: 100dvh;
+  transition: bottom 0.25s cubic-bezier(0.16, 1, 0.3, 1), height 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 가상 키보드가 활성화되었을 때 (.keyboard-open) */
+body.keyboard-open .app-modal {
+  bottom: var(--keyboard-height, 0px) !important;
+  height: var(--visual-viewport-height, 100vh) !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding-top: max(env(safe-area-inset-top, 0px) + 8px, 12px) !important;
+  padding-bottom: 8px !important;
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+}
+
+/* 키보드 활성화 시 모달 카드 (다이얼로그 본체) */
+body.keyboard-open .app-modal > div.relative {
+  max-height: calc(var(--visual-viewport-height, 100vh) - 20px) !important;
+  border-radius: 1.25rem !important;
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.45) !important;
+  transform: translateY(-8px);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), max-height 0.22s ease, border-radius 0.2s ease;
+}
+
+/* 키보드 활성화 시 모달 헤더와 하단 액션 버튼 바 고정 */
+body.keyboard-open .app-modal > div.relative > div:first-child,
+body.keyboard-open .app-modal > div.relative > div:last-child {
+  flex-shrink: 0;
+}
+
+/* 모달 본문 스크롤 부드럽게 유지 */
+body.keyboard-open .app-modal .overflow-y-auto {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* 줌/팬 무대 컨테이너 */
 #stageContainer {
   will-change: transform;
   transform-origin: 0 0;
-  transition: transform 0.05s ease-out;
+  touch-action: none;
 }
 
 /* 편집 모드 줌 컨트롤 */

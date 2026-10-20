@@ -2,7 +2,7 @@
  * ContiNote - Service Worker (PWA Offline & Install Support)
  */
 
-const CACHE_NAME = 'continote-v5';
+const CACHE_NAME = 'continote-v9';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -14,6 +14,8 @@ const STATIC_ASSETS = [
   './js/canvas.js',
   './js/stickers.js',
   './js/zoom.js',
+  './js/crop.js',
+  './js/drive.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon.svg'
