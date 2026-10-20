@@ -138,16 +138,20 @@ body {
 }
 
 /* [6. 다크 모드 시 Base Canvas(악보)만 선택적 invert(흑백 반전) 처리 / User Canvas와 스티커는 제외] */
-#baseCanvas {
+#baseCanvas,
+#baseCanvasRight {
   transition: filter 0.2s ease;
+  background-color: #ffffff;
 }
 
-html.dark #baseCanvas {
+html.dark #baseCanvas,
+html.dark #baseCanvasRight {
   filter: invert(1) hue-rotate(180deg);
 }
 
 /* 스티커 레이어 */
-#stickerLayer {
+#stickerLayer,
+#stickerLayerRight {
   z-index: 20;
 }
 

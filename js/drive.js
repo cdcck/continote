@@ -45,6 +45,10 @@ export function getDriveAccessToken() {
   return token;
 }
 
+export function getDriveTokenExpiresAt() {
+  return Number(localStorage.getItem(TOKEN_EXPIRES_KEY) || 0);
+}
+
 export function hasDriveAuth() {
   return Boolean(getDriveAccessToken());
 }

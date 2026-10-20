@@ -57,7 +57,8 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
 
       const ctx = baseCanvas.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, dw, dh);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, dw, dh);
       ctx.drawImage(img, 0, 0, dw, dh);
 
       resolve();

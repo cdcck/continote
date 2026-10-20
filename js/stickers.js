@@ -31,15 +31,20 @@ export function createStickerElement(songId, item, viewer) {
   let isPointerDown = false;
   let dragging = false;
   let moved = false;
+  let longPressed = false;
   let startX = 0, startY = 0;
   let longPressTimer = null;
 
   el.addEventListener('pointerdown', (e) => {
     if (state.locked) return;
+    // 삭제 뱃지(×) 클릭 시 부모 스티커의 드래그나 캡처 이벤트 방지
+    if (e.target.closest('.del-badge')) return;
+
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     isPointerDown = true;
+    longPressed = false;
     try {
       el.setPointerCapture(e.pointerId);
     } catch (_) {}
@@ -47,8 +52,11 @@ export function createStickerElement(songId, item, viewer) {
     startY = e.clientY;
     moved = false;
     longPressTimer = setTimeout(() => {
-      if (!moved && isPointerDown) showStickerDeleteBadge(el, songId, item);
-    }, 500);
+      if (!moved && isPointerDown) {
+        longPressed = true;
+        showStickerDeleteBadge(el, songId, item);
+      }
+    }, 450);
   });
 
   // PC 우클릭 시 즉시 삭제 뱃지 토글
@@ -81,6 +89,7 @@ export function createStickerElement(songId, item, viewer) {
   });
 
   const endHandler = (e) => {
+    if (e.target.closest('.del-badge')) return;
     isPointerDown = false;
     clearTimeout(longPressTimer);
     if (dragging) {
@@ -89,7 +98,15 @@ export function createStickerElement(songId, item, viewer) {
         el.releasePointerCapture(e.pointerId);
       } catch (_) { }
       saveStickers(songId);
+    } else if (!moved && !longPressed) {
+      // 롱프레스가 아닌 일반 탭/클릭 시 삭제 뱃지 토글
+      if (el.querySelector('.del-badge')) {
+        removeStickerDeleteBadge(el);
+      } else {
+        showStickerDeleteBadge(el, songId, item);
+      }
     }
+    longPressed = false;
   };
 
   el.addEventListener('pointerup', endHandler);
@@ -103,18 +120,40 @@ export function showStickerDeleteBadge(el, songId, item) {
   badge.className = 'del-badge';
   badge.textContent = '×';
   badge.title = '스티커 삭제';
-  badge.addEventListener('click', (e) => {
+
+  const deleteAction = (e) => {
+    e.preventDefault();
     e.stopPropagation();
     const list = state.stickersBySong[songId] || [];
     const idx = list.findIndex(s => s.id === item.id);
-    if (idx !== -1) list.splice(idx, 1);
-    saveStickers(songId);
+    if (idx !== -1) {
+      list.splice(idx, 1);
+      saveStickers(songId);
+    }
     el.remove();
+  };
+
+  // 포인터 이벤트 버블링 차단 및 터치/클릭 즉시 삭제 처리
+  badge.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
   });
+  badge.addEventListener('pointerup', deleteAction);
+  badge.addEventListener('click', deleteAction);
+
   el.appendChild(badge);
 }
 
 export function removeStickerDeleteBadge(el) {
   const b = el.querySelector('.del-badge');
   if (b) b.remove();
+}
+
+// 화면 빈 영역 클릭 시 열려있는 삭제 뱃지 닫기
+if (typeof document !== 'undefined') {
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('.sticker')) {
+      document.querySelectorAll('.del-badge').forEach(b => b.remove());
+    }
+  });
 }

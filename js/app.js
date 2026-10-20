@@ -25,7 +25,7 @@ import {
 import { renderStickerLayer } from './stickers.js';
 import { setupZoomAndPan, resetZoom, updateZoomVisibility } from './zoom.js';
 import {
-  setDriveAccessToken, getDriveAccessToken, hasDriveAuth,
+  setDriveAccessToken, getDriveAccessToken, hasDriveAuth, getDriveTokenExpiresAt,
   syncContisIndexFromDrive, syncContisIndexToDrive,
   syncContiDetailFromDrive, syncContiDetailToDrive,
   syncAllContisDetailToDrive, syncLibraryFromDrive, syncLibraryToDrive, runFullDriveSync,
@@ -37,7 +37,7 @@ const els = {};
 const DOM_IDS = [
   // 1. 헤더 및 네비게이션
   'backBtn', 'backBtnText', 'headerLogoArea', 'viewerHeaderInfo', 'viewerContiTitle', 'viewerSongTitle',
-  'addContiBtn', 'songListAddBtn', 'addLibrarySongBtn', 'viewerBpmBtn', 'viewerBpmText', 'lockBtn', 'lockClosedIcon', 'lockOpenIcon',
+  'addContiBtn', 'songListAddBtn', 'viewerBpmBtn', 'viewerBpmText', 'lockBtn', 'lockClosedIcon', 'lockOpenIcon', 'lockBtnLabel',
   'authHeaderArea', 'headerGoogleLoginBtn', 'headerProfileChip', 'headerUserAvatar', 'headerUserName',
   // 2. [1단계] 콘티 목록 뷰
   'contiListView', 'contiListContainer', 'contiEmptyState', 'emptyContiCreateBtn',
@@ -69,6 +69,7 @@ const DOM_IDS = [
   'chordStickerModal', 'chordStickerInput', 'chordStickerBackspaceBtn', 'chordStickerClearBtn', 'chordStickerPreview', 'chordStickerAddBtn',
   'shareModal', 'shareContiTitle', 'shareEmailInput', 'addShareEmailBtn', 'shareEmailList', 'copyShareLinkBtn',
   'songMetaModal', 'songMetaModalTitle', 'songMetaNameInput', 'songMetaKeySelect', 'songMetaTimeSigSelect', 'songMetaTempoInput', 'songMetaBpmBtn', 'songMetaThemesContainer', 'songMetaSaveBtn',
+  'songMetaLibrarySyncRow', 'songMetaAddToLibraryCheckbox', 'songMetaAddToLibraryLabel', 'songMetaAddToLibraryDesc',
   'addToContiModal', 'addToContiSongTitle', 'addToContiListContainer', 'confirmAddToContiBtn',
   'pwaInstallSection', 'pwaInstallBtn', 'pwaInstallBtnText', 'pwaInstallHint',
   'stickerSizeControls', 'stickerSizeDecBtn', 'stickerSizeIncBtn', 'stickerSizeLabel'
@@ -317,11 +318,63 @@ function updateSongMetaBpmBtnState() {
 const GOOGLE_CLIENT_ID = '994055071886-5kn07k326te23njf8is1t7in47deen9t.apps.googleusercontent.com';
 let gisClient = null;
 
+export function clearUserSession() {
+  state.currentUser = {
+    email: 'leader@continote.com',
+    name: '찬양인도자',
+    picture: 'https://api.dicebear.com/7.x/bottts/svg?seed=continote'
+  };
+  setDriveAccessToken(null);
+  saveUserSession(null);
+  updateAuthUI();
+  renderContiListView();
+  applyUIState();
+}
+
+let tokenRefreshTimer = null;
+function setupDriveAutoRefresh() {
+  if (tokenRefreshTimer) clearInterval(tokenRefreshTimer);
+
+  tokenRefreshTimer = setInterval(() => {
+    const isLoggedIn = Boolean(state.currentUser && state.currentUser.email !== 'leader@continote.com');
+    if (!isLoggedIn) return;
+
+    if (!hasDriveAuth()) {
+      clearUserSession();
+      return;
+    }
+
+    const expiresAt = getDriveTokenExpiresAt();
+    // 만료 5분(300초) 전이면 백그라운드에서 조용히 토큰 자동 갱신 요청
+    if (expiresAt && (expiresAt - Date.now() < 300000)) {
+      if (gisClient && state.currentUser && state.currentUser.email !== 'leader@continote.com') {
+        try {
+          gisClient.requestAccessToken({ prompt: '', hint: state.currentUser.email });
+        } catch (e) {
+          console.warn('드라이브 토큰 자동 연장 시도:', e);
+        }
+      }
+    }
+  }, 60000);
+}
+
 function initGoogleAuth() {
   const savedUser = loadUserSession();
-  if (savedUser) {
-    state.currentUser = savedUser;
-    migrateLocalContisToUser(savedUser);
+  const hasValidToken = hasDriveAuth();
+
+  if (savedUser && savedUser.email !== 'leader@continote.com') {
+    if (hasValidToken) {
+      state.currentUser = savedUser;
+      migrateLocalContisToUser(savedUser);
+    } else {
+      // [세션 일치화] Drive 토큰이 이미 만료되어 있다면 불일치 세션을 정리하여 로그인 버튼으로 일치화
+      state.currentUser = {
+        email: 'leader@continote.com',
+        name: '찬양인도자',
+        picture: 'https://api.dicebear.com/7.x/bottts/svg?seed=continote'
+      };
+      saveUserSession(null);
+    }
   } else {
     // 디폴트 인도자 가상 계정 (오프라인/미로그인 시 기본)
     state.currentUser = {
@@ -358,6 +411,7 @@ function initGoogleAuth() {
             };
             saveUserSession(state.currentUser);
             updateAuthUI();
+            setupDriveAutoRefresh();
 
             // 로그인 전 기본 계정으로 로컬에 생성된 콘티들을 내 계정으로 자동 이전
             await migrateLocalContisToUser(state.currentUser);
@@ -381,12 +435,17 @@ function initGoogleAuth() {
     }
   }
 
-  window.addEventListener('continote:drive-auth-changed', () => {
-    updateAuthUI();
+  window.addEventListener('continote:drive-auth-changed', (e) => {
+    if (e.detail && !e.detail.authorized && state.currentUser && state.currentUser.email !== 'leader@continote.com') {
+      clearUserSession();
+    } else {
+      updateAuthUI();
+    }
   });
 
-  // 앱 로드 시 기존 Drive 토큰이 유효하면 백그라운드에서 동기화
+  // 앱 로드 시 기존 Drive 토큰이 유효하면 백그라운드 동기화 및 자동 연장 타이머 가동
   if (hasDriveAuth()) {
+    setupDriveAutoRefresh();
     Promise.all([syncContisIndexFromDrive(), syncLibraryFromDrive()]).then(() => {
       syncAllContisDetailToDrive().catch(() => {});
       renderContiListView();
@@ -531,16 +590,7 @@ function handleProfileClick() {
 
   // 2. 이미 드라이브가 잘 연결되어 있을 때 클릭하면 로그아웃 확인
   if (!confirm(`'${state.currentUser.name} (${state.currentUser.email})' 계정에서 로그아웃하시겠습니까?`)) return;
-  state.currentUser = {
-    email: 'leader@continote.com',
-    name: '찬양인도자',
-    picture: 'https://api.dicebear.com/7.x/bottts/svg?seed=continote'
-  };
-  setDriveAccessToken(null);
-  saveUserSession(null);
-  updateAuthUI();
-  renderContiListView();
-  applyUIState();
+  clearUserSession();
 }
 
 /* ==================================================
@@ -550,6 +600,129 @@ function handleProfileClick() {
    ================================================== */
 let editingContiId = null;
 let sharingContiId = null;
+const expandedContiGroups = new Set();
+
+function createContiCardElement(conti, isLeader, myEmail) {
+  const card = document.createElement('div');
+  card.className = 'conti-card p-3 sm:p-3.5 rounded-2xl border transition-all active:scale-[0.99] cursor-pointer flex flex-col gap-1.5 shadow-sm hover:shadow-md';
+  card.style.borderColor = 'var(--border)';
+  card.style.backgroundColor = 'var(--surface)';
+
+  const songCount = (conti.songs && conti.songs.length) || 0;
+  const isShared = (conti.authorEmail || 'leader@continote.com') !== myEmail;
+  const canEdit = isLeader || !isShared;
+
+  card.innerHTML = `
+    <!-- 1줄: 날짜 및 공유 상태 -->
+    <div class="flex items-center gap-1.5 flex-wrap min-w-0">
+      ${conti.date ? `<span class="px-2 py-0.5 rounded-md text-[11px] font-semibold border shrink-0" style="border-color:var(--border);background:var(--surface-2);color:var(--text-dim)">${escapeHtml(conti.date)}</span>` : ''}
+      ${isShared ? `<span class="px-2 py-0.5 rounded-md text-[11px] font-bold shrink-0" style="background:var(--accent-soft);color:var(--accent)">공유받음 (${escapeHtml(conti.authorName || '인도자')})</span>` : ''}
+    </div>
+
+    <!-- 2줄: 콘티 제목 (좌측) & 슬림 액션 버튼들 (우측) -->
+    <div class="flex items-center justify-between gap-3">
+      <div class="min-w-0 flex-1">
+        <h3 class="font-bold text-base sm:text-lg truncate">${escapeHtml(conti.title)}</h3>
+        ${conti.memo ? `<p class="text-xs sm:text-sm mt-0.5 line-clamp-1" style="color:var(--text-dim)">${escapeHtml(conti.memo)}</p>` : ''}
+      </div>
+      <div class="shrink-0 flex items-center gap-1.5">
+        ${canEdit ? `
+          <button data-edit-conti="${conti.id}" class="p-1.5 sm:px-2.5 sm:py-1 rounded-xl text-xs font-bold border flex items-center gap-1 shrink-0 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all shadow-sm" style="border-color:var(--border);background:var(--surface-2);color:var(--text)" title="콘티 제목/날짜/메모 수정">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-3.5 h-3.5"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            <span class="hidden sm:inline">수정</span>
+          </button>
+        ` : ''}
+        ${isLeader ? `
+          <button data-share-conti="${conti.id}" class="p-1.5 sm:px-2.5 sm:py-1 rounded-xl text-xs font-bold border flex items-center gap-1 shrink-0 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all shadow-sm" style="border-color:var(--border);background:var(--surface-2);color:var(--text)" title="찬양팀원에게 공유">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-3.5 h-3.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
+            <span class="hidden sm:inline">공유</span>
+          </button>
+          <button data-delete-conti="${conti.id}" class="p-1.5 rounded-xl text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 active:scale-95 transition-all shrink-0" title="콘티 삭제">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        ` : ''}
+      </div>
+    </div>
+
+    <!-- 3줄: n곡 배지 (좌측) & 곡 목록 보기 (우측) -->
+    <div class="pt-2 border-t flex items-center justify-between text-xs" style="border-color:var(--border)">
+      <span class="px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0" style="background:var(--accent-soft);color:var(--accent)">
+        ${songCount}곡
+      </span>
+      <span class="font-bold shrink-0 flex items-center gap-1" style="color:var(--accent)">
+        곡 목록 보기
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-3.5 h-3.5"><path d="m9 18 6-6-6-6"/></svg>
+      </span>
+    </div>
+  `;
+
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('[data-share-conti]') || e.target.closest('[data-edit-conti]') || e.target.closest('[data-delete-conti]')) {
+      return;
+    }
+    openSongList(conti.id);
+  });
+
+  return card;
+}
+
+function createContiGroupCard(groupKey, titleText, countText, items, isLeader, myEmail) {
+  const isExpanded = expandedContiGroups.has(groupKey);
+  const container = document.createElement('div');
+  container.className = 'conti-group-container flex flex-col gap-2 transition-all';
+
+  const groupHeader = document.createElement('div');
+  groupHeader.className = 'conti-group-header p-3 sm:p-3.5 rounded-2xl border cursor-pointer flex items-center justify-between gap-3 shadow-sm hover:shadow-md transition-all active:scale-[0.99] select-none';
+  groupHeader.style.borderColor = 'var(--border)';
+  groupHeader.style.backgroundColor = 'var(--surface-2)';
+
+  groupHeader.innerHTML = `
+    <div class="flex items-center gap-2.5 min-w-0 flex-1">
+      <div class="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border shadow-xs" style="border-color:var(--border);background:var(--surface);color:var(--accent)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H8v20H6.5A2.5 2.5 0 0 1 4 19.5Z"/><path d="M8 2h4v20H8"/><path d="M12 2h3.5a2.5 2.5 0 0 1 2.5 2.5v15a2.5 2.5 0 0 1-2.5 2.5H12"/></svg>
+      </div>
+      <div class="min-w-0 flex items-center gap-2">
+        <h4 class="font-bold text-sm sm:text-base truncate">${escapeHtml(titleText)}</h4>
+        ${countText ? `<span class="text-xs font-semibold px-2 py-0.5 rounded-full border shrink-0" style="border-color:var(--border);background:var(--surface);color:var(--text-dim)">${escapeHtml(countText)}</span>` : ''}
+      </div>
+    </div>
+    <button type="button" class="group-toggle-btn p-1.5 sm:px-2.5 sm:py-1 rounded-xl text-xs font-bold border flex items-center gap-1 shrink-0 transition-all shadow-xs" style="border-color:var(--border);background:var(--surface);color:var(--accent)">
+      <span class="btn-text hidden sm:inline">${isExpanded ? '접기' : '펼쳐보기'}</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+  `;
+
+  const groupContent = document.createElement('div');
+  groupContent.className = `conti-group-content flex-col gap-2 pl-2 sm:pl-3 border-l-2 ml-2 sm:ml-3 ${isExpanded ? 'flex' : 'hidden'}`;
+  groupContent.style.borderColor = 'var(--border)';
+
+  items.forEach(conti => {
+    const cardEl = createContiCardElement(conti, isLeader, myEmail);
+    groupContent.appendChild(cardEl);
+  });
+
+  groupHeader.addEventListener('click', () => {
+    const btnText = groupHeader.querySelector('.btn-text');
+    const btnSvg = groupHeader.querySelector('.group-toggle-btn svg');
+    if (expandedContiGroups.has(groupKey)) {
+      expandedContiGroups.delete(groupKey);
+      groupContent.classList.remove('flex');
+      groupContent.classList.add('hidden');
+      if (btnText) btnText.textContent = '펼쳐보기';
+      if (btnSvg) btnSvg.classList.remove('rotate-180');
+    } else {
+      expandedContiGroups.add(groupKey);
+      groupContent.classList.remove('hidden');
+      groupContent.classList.add('flex');
+      if (btnText) btnText.textContent = '접기';
+      if (btnSvg) btnSvg.classList.add('rotate-180');
+    }
+  });
+
+  container.appendChild(groupHeader);
+  container.appendChild(groupContent);
+  return container;
+}
 
 export function renderContiListView() {
   if (!els.contiListContainer) return;
@@ -584,66 +757,107 @@ export function renderContiListView() {
   }
   hide(els.contiEmptyState);
 
-  contis.forEach(conti => {
-    const card = document.createElement('div');
-    card.className = 'conti-card p-3 sm:p-3.5 rounded-2xl border transition-all active:scale-[0.99] cursor-pointer flex flex-col gap-1.5 shadow-sm hover:shadow-md';
-    card.style.borderColor = 'var(--border)';
-    card.style.backgroundColor = 'var(--surface)';
+  // 날짜 내림차순 정렬 (최신 날짜가 위로)
+  const getContiTime = (c) => {
+    if (c.date) {
+      const t = new Date(c.date).getTime();
+      if (!isNaN(t)) return t;
+    }
+    if (c.createdAt) {
+      const t = new Date(c.createdAt).getTime();
+      if (!isNaN(t)) return t;
+    }
+    return 0;
+  };
+  const sortedContis = [...contis].sort((a, b) => getContiTime(b) - getContiTime(a));
 
-    const songCount = (conti.songs && conti.songs.length) || 0;
-    const isShared = (conti.authorEmail || 'leader@continote.com') !== myEmail;
+  const now = new Date();
+  const currentYear = now.getFullYear();
 
-    card.innerHTML = `
-      <!-- 1줄: 날짜 및 공유 상태 -->
-      <div class="flex items-center gap-1.5 flex-wrap min-w-0">
-        ${conti.date ? `<span class="px-2 py-0.5 rounded-md text-[11px] font-semibold border shrink-0" style="border-color:var(--border);background:var(--surface-2);color:var(--text-dim)">${escapeHtml(conti.date)}</span>` : ''}
-        ${isShared ? `<span class="px-2 py-0.5 rounded-md text-[11px] font-bold shrink-0" style="background:var(--accent-soft);color:var(--accent)">공유받음 (${escapeHtml(conti.authorName || '인도자')})</span>` : ''}
-      </div>
+  // 최근 3개 달(Calendar Month: YYYY-MM) 계산
+  const recentMonths = [];
+  for (let i = 0; i < 3; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    recentMonths.push(`${yyyy}-${mm}`);
+  }
 
-      <!-- 2줄: 콘티 제목 (좌측) & 슬림 무테 액션 버튼들 (우측) -->
-      <div class="flex items-center justify-between gap-3">
-        <div class="min-w-0 flex-1">
-          <h3 class="font-bold text-base sm:text-lg truncate">${escapeHtml(conti.title)}</h3>
-          ${conti.memo ? `<p class="text-xs sm:text-sm mt-0.5 line-clamp-1" style="color:var(--text-dim)">${escapeHtml(conti.memo)}</p>` : ''}
-        </div>
-        ${isLeader ? `
-          <div class="shrink-0 flex items-center gap-1">
-            <button data-share-conti="${conti.id}" class="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all" title="찬양팀원에게 공유">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
-            </button>
-            <button data-edit-conti="${conti.id}" class="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all" title="콘티 정보 수정">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-            </button>
-            <button data-delete-conti="${conti.id}" class="p-1.5 rounded-lg text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 active:scale-95 transition-all" title="콘티 삭제">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            </button>
-          </div>
-        ` : ''}
-      </div>
+  // 그룹 분할
+  // 1순위: 최근 3개월에 속하거나 당해 연도(올해)인 콘티 (묶지 않고 개별 카드로 항상 펼침)
+  const recentList = [];
+  // 2순위: 이전 3개년도별 (currentYear - 1, currentYear - 2, currentYear - 3)
+  const yearGroupMap = new Map();
+  // 3순위: 그 이전 (currentYear - 4 이하)
+  const ancientList = [];
 
-      <!-- 3줄: n곡 배지 (좌측) & 곡 목록 보기 (우측) -->
-      <div class="pt-2 border-t flex items-center justify-between text-xs" style="border-color:var(--border)">
-        <span class="px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0" style="background:var(--accent-soft);color:var(--accent)">
-          ${songCount}곡
-        </span>
-        <span class="font-bold shrink-0 flex items-center gap-1" style="color:var(--accent)">
-          곡 목록 보기
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-3.5 h-3.5"><path d="m9 18 6-6-6-6"/></svg>
-        </span>
-      </div>
-    `;
+  sortedContis.forEach(c => {
+    let year = null;
+    let monthKey = null;
 
-    card.addEventListener('click', (e) => {
-      if (e.target.closest('[data-share-conti]') || e.target.closest('[data-edit-conti]') || e.target.closest('[data-delete-conti]')) {
-        return;
+    if (c.date && /^\d{4}-\d{2}/.test(c.date)) {
+      year = parseInt(c.date.slice(0, 4), 10);
+      monthKey = c.date.slice(0, 7);
+    } else if (c.createdAt && /^\d{4}-\d{2}/.test(c.createdAt)) {
+      year = parseInt(c.createdAt.slice(0, 4), 10);
+      monthKey = c.createdAt.slice(0, 7);
+    }
+
+    // 최근 3개 역월에 포함되거나, 당해 연도이거나, 날짜가 없는 경우 -> 최근 목록으로 항상 펼침
+    if ((monthKey && recentMonths.includes(monthKey)) || year === currentYear || year === null) {
+      recentList.push(c);
+      return;
+    }
+
+    const diff = currentYear - year;
+    if (diff >= 1 && diff <= 3) {
+      if (!yearGroupMap.has(year)) {
+        yearGroupMap.set(year, []);
       }
-      openSongList(conti.id);
-    });
+      yearGroupMap.get(year).push(c);
+      return;
+    }
 
+    ancientList.push(c);
+  });
+
+  // 1. 최근 콘티 카드 렌더링
+  recentList.forEach(conti => {
+    const card = createContiCardElement(conti, isLeader, myEmail);
     els.contiListContainer.appendChild(card);
   });
 
-  // 버튼 이벤트 연결
+  // 2. 전년도 이전 3개년도별 묶음 카드 (YYYY년도 (N개))
+  for (let i = 1; i <= 3; i++) {
+    const yr = currentYear - i;
+    const items = yearGroupMap.get(yr);
+    if (items && items.length > 0) {
+      const groupCard = createContiGroupCard(
+        `year-${yr}`,
+        `${yr}년도`,
+        `${items.length}개`,
+        items,
+        isLeader,
+        myEmail
+      );
+      els.contiListContainer.appendChild(groupCard);
+    }
+  }
+
+  // 3. 4개년 이전 콘티 묶음 카드 ('이전', 개수 파악 불필요)
+  if (ancientList.length > 0) {
+    const ancientCard = createContiGroupCard(
+      'ancient',
+      '이전',
+      '',
+      ancientList,
+      isLeader,
+      myEmail
+    );
+    els.contiListContainer.appendChild(ancientCard);
+  }
+
+  // 버튼 이벤트 연결 (전체 컨테이너 내의 수정/공유/삭제 버튼)
   els.contiListContainer.querySelectorAll('[data-share-conti]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1074,16 +1288,16 @@ export function renderSongLibraryView() {
       </div>
       <!-- 우측 버튼 영역: 송폼 유무에 따라 1단 또는 위아래 2단 배치 -->
       <div class="shrink-0 flex flex-col items-stretch gap-1.5">
-        <button data-import-sheet="${song.id}" class="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl border font-semibold text-xs transition-all active:scale-95"
+        <button data-import-sheet="${song.id}" class="flex items-center justify-center gap-1 p-2 sm:px-2.5 sm:py-1.5 rounded-xl border font-semibold text-xs transition-all active:scale-95"
           style="border-color:var(--border);background:var(--surface-2);color:var(--text)" title="악보 이미지만 내 콘티로 가져오기">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          <span class="whitespace-nowrap">악보 가져오기</span>
+          <span class="whitespace-nowrap hidden sm:inline">악보 가져오기</span>
         </button>
         ${hasSongform ? `
-          <button data-import-full="${song.id}" class="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl text-white font-semibold text-xs shadow-sm active:scale-95 transition-all"
+          <button data-import-full="${song.id}" class="flex items-center justify-center gap-1 p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-white font-semibold text-xs shadow-sm active:scale-95 transition-all"
             style="background:var(--accent)" title="악보, 송폼 순서, 스티커를 모두 내 콘티로 가져오기">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5"><path d="M12 5v14M5 12h14"/></svg>
-            <span class="whitespace-nowrap">전체 가져오기</span>
+            <span class="whitespace-nowrap hidden sm:inline">전체 가져오기</span>
           </button>` : ''}
       </div>
     `;
@@ -1378,6 +1592,13 @@ export function initBrowserHistory() {
       return;
     }
 
+    // 뷰어 편집 중 브라우저 뒤로가기 제스처 시 저장 확인
+    if (state.viewLevel === 'viewer' && !state.locked && hasDriveAuth() && state.currentContiId) {
+      if (confirm('편집 중인 내용이 있습니다. 저장하시겠습니까?')) {
+        syncContiDetailToDrive(state.currentContiId, true);
+      }
+    }
+
     const targetState = event.state;
     if (targetState && typeof targetState.appDepth === 'number') {
       appHistoryDepth = targetState.appDepth;
@@ -1441,6 +1662,12 @@ async function restoreNavigationState(targetState) {
 export function handleDirectBack() {
   stopMetronome();
   if (state.viewLevel === 'viewer') {
+    const wasEditing = !state.locked;
+    if (wasEditing && hasDriveAuth() && state.currentContiId) {
+      if (confirm('편집 중인 내용이 있습니다. 저장하시겠습니까?')) {
+        syncContiDetailToDrive(state.currentContiId, true);
+      }
+    }
     if (state.viewerReturnView === 'songLibrary') {
       state.viewLevel = 'songLibrary';
       state.viewerReturnView = null;
@@ -1573,7 +1800,6 @@ export function applyUIState() {
     show(els.headerLogoArea, 'flex');
     hide(els.viewerHeaderInfo);
     hide(els.songListAddBtn);
-    hide(els.addLibrarySongBtn);
     hide(els.viewerBpmBtn);
     hide(els.lockBtn);
     hide(els.navIndicator);
@@ -1616,7 +1842,6 @@ export function applyUIState() {
     } else {
       hide(els.songListAddBtn);
     }
-    hide(els.addLibrarySongBtn);
     hide(els.viewerBpmBtn);
     hide(els.lockBtn);
     hide(els.navIndicator);
@@ -1647,7 +1872,6 @@ export function applyUIState() {
     }
     hide(els.addContiBtn);
     hide(els.songListAddBtn);
-    show(els.addLibrarySongBtn, 'flex');
     hide(els.viewerBpmBtn);
     hide(els.lockBtn);
     hide(els.navIndicator);
@@ -1678,7 +1902,6 @@ export function applyUIState() {
     }
     hide(els.addContiBtn);
     hide(els.songListAddBtn);
-    hide(els.addLibrarySongBtn);
     hide(els.viewerBpmBtn);
     hide(els.lockBtn);
     hide(els.navIndicator);
@@ -1729,7 +1952,6 @@ export function applyUIState() {
 
   hide(els.addContiBtn);
   hide(els.songListAddBtn);
-  hide(els.addLibrarySongBtn);
   if (hasSongs) {
     show(els.navIndicator, 'inline-flex');
     if (currentSong && currentSong.tempo) {
@@ -1761,12 +1983,20 @@ export function applyUIState() {
   if (state.locked) {
     show(els.lockClosedIcon, 'flex');
     hide(els.lockOpenIcon);
-    els.lockBtn.className = 'w-8 h-8 sm:w-[34px] sm:h-[34px] flex items-center justify-center rounded-xl border active:scale-95 transition-all shrink-0 lock-view-mode';
+    els.lockBtn.className = 'h-8 sm:h-[34px] px-2 sm:px-2.5 rounded-full border flex items-center justify-center gap-1.5 active:scale-95 transition-all shrink-0 select-none shadow-sm cursor-pointer lock-view-mode';
+    els.lockBtn.style.borderColor = 'var(--border)';
+    els.lockBtn.style.backgroundColor = 'var(--surface-2)';
+    els.lockBtn.style.color = 'var(--text-dim)';
+    if (els.lockBtnLabel) els.lockBtnLabel.textContent = '보기';
     els.lockBtn.title = '보기 모드 (잠김 - 클릭하여 편집 모드로 전환)';
   } else {
     hide(els.lockClosedIcon);
     show(els.lockOpenIcon, 'flex');
-    els.lockBtn.className = 'w-8 h-8 sm:w-[34px] sm:h-[34px] flex items-center justify-center rounded-xl border active:scale-95 transition-all shrink-0 lock-edit-mode';
+    els.lockBtn.className = 'h-8 sm:h-[34px] px-2 sm:px-2.5 rounded-full border flex items-center justify-center gap-1.5 active:scale-95 transition-all shrink-0 select-none shadow-sm cursor-pointer lock-edit-mode';
+    els.lockBtn.style.borderColor = 'var(--accent)';
+    els.lockBtn.style.backgroundColor = 'var(--accent-soft)';
+    els.lockBtn.style.color = 'var(--accent)';
+    if (els.lockBtnLabel) els.lockBtnLabel.textContent = '편집';
     els.lockBtn.title = '편집 모드 (열림 - 클릭하여 보기 모드로 전환)';
   }
 
@@ -2416,6 +2646,22 @@ function openSongMetaModalForEdit(song) {
   updateSongMetaBpmBtnState();
   renderSongMetaThemesContainer(song.themes || []);
 
+  if (els.songMetaLibrarySyncRow) {
+    show(els.songMetaLibrarySyncRow, 'block');
+    const isAlreadyInLib = (state.allSongs || []).some(s => s.id === song.id);
+    if (isAlreadyInLib) {
+      els.songMetaAddToLibraryCheckbox.checked = true;
+      els.songMetaAddToLibraryCheckbox.disabled = true;
+      if (els.songMetaAddToLibraryLabel) els.songMetaAddToLibraryLabel.textContent = '마스터 악보 보관함에 등록됨 (동기화 중)';
+      if (els.songMetaAddToLibraryDesc) els.songMetaAddToLibraryDesc.textContent = '이 곡은 이미 보관함에 등록되어 있어 정보가 함께 자동 동기화됩니다.';
+    } else {
+      els.songMetaAddToLibraryCheckbox.checked = false;
+      els.songMetaAddToLibraryCheckbox.disabled = false;
+      if (els.songMetaAddToLibraryLabel) els.songMetaAddToLibraryLabel.textContent = '마스터 악보 보관함(곡 목록)에도 등록하기';
+      if (els.songMetaAddToLibraryDesc) els.songMetaAddToLibraryDesc.textContent = '체크 시 현재 콘티뿐 아니라 마스터 보관함에도 새로 등록하여 보존합니다.';
+    }
+  }
+
   show(els.songMetaModal, 'flex');
   setTimeout(() => els.songMetaNameInput.focus(), 100);
 }
@@ -2434,6 +2680,19 @@ function openSongMetaModal(croppedUrl, originalUrl, defaultName) {
   els.songMetaTempoInput.value = '';
   updateSongMetaBpmBtnState();
   renderSongMetaThemesContainer([]);
+
+  if (els.songMetaLibrarySyncRow) {
+    if (songUploadTarget === 'library') {
+      hide(els.songMetaLibrarySyncRow);
+    } else {
+      show(els.songMetaLibrarySyncRow, 'block');
+      els.songMetaAddToLibraryCheckbox.checked = true;
+      els.songMetaAddToLibraryCheckbox.disabled = false;
+      if (els.songMetaAddToLibraryLabel) els.songMetaAddToLibraryLabel.textContent = '마스터 악보 보관함(곡 목록)에도 함께 등록';
+      if (els.songMetaAddToLibraryDesc) els.songMetaAddToLibraryDesc.textContent = '체크 시 보관함에 영구 보존되어 다른 콘티에서도 언제든 꺼내 쓸 수 있습니다.';
+    }
+  }
+
   show(els.songMetaModal, 'flex');
   setTimeout(() => els.songMetaNameInput.focus(), 100);
 }
@@ -2636,6 +2895,11 @@ function wireEventListeners() {
       return;
     }
     const date = els.contiDateInput.value;
+    if (!date) {
+      alert('예배 일자를 입력해주세요.');
+      els.contiDateInput.focus();
+      return;
+    }
     const memo = els.contiMemoInput.value.trim();
 
     if (editingContiId) {
@@ -2699,13 +2963,7 @@ function wireEventListeners() {
   });
   document.querySelectorAll('[data-close-share-modal]').forEach(el => el.addEventListener('click', () => hide(els.shareModal)));
 
-  // 헤더 곡 목록에 추가 버튼 (마스터 악보 보관함에 추가)
-  if (els.addLibrarySongBtn) {
-    els.addLibrarySongBtn.addEventListener('click', () => {
-      songUploadTarget = 'library';
-      els.fileInput.click();
-    });
-  }
+
 
   // 헤더 악보 뷰어 템포(BPM) 메트로놈 재생/정지 버튼
   if (els.viewerBpmBtn) {
@@ -2739,11 +2997,19 @@ function wireEventListeners() {
 
   // 자물쇠 토글 버튼
   els.lockBtn.addEventListener('click', async () => {
+    const wasEditing = !state.locked;
     state.locked = !state.locked;
     saveCurrentMenuSession();
     if (state.locked) resetZoom();
     applyUIState();
     await renderAll();
+
+    // 편집 상태에서 보기 상태로 자물쇠를 닫을 때 저장 수행
+    if (wasEditing && state.locked) {
+      if (hasDriveAuth() && state.currentContiId) {
+        syncContiDetailToDrive(state.currentContiId, true);
+      }
+    }
   });
 
   // 하단 4대 메뉴 네비게이션: 메뉴별 독립 세션으로 이전 작업/편집 상태 보존!
@@ -2986,8 +3252,10 @@ function wireEventListeners() {
         }
       }
 
-      // 2. 마스터 악보 보관함(라이브러리)에서도 일괄 업데이트
+      // 2. 마스터 악보 보관함(라이브러리)에서도 일괄 업데이트 또는 사후 신규 등록
       const libSong = state.allSongs.find(s => s.id === editingSongMetaId);
+      const shouldSyncToLib = els.songMetaAddToLibraryCheckbox ? els.songMetaAddToLibraryCheckbox.checked : false;
+
       if (libSong) {
         libSong.name = name;
         libSong.key = key;
@@ -2995,11 +3263,15 @@ function wireEventListeners() {
         libSong.tempo = tempo;
         libSong.themes = themes;
         await saveLibrarySong(libSong);
-      } else if (targetSong) {
+        if (hasDriveAuth()) {
+          syncLibraryToDrive(state.allSongs, true);
+        }
+      } else if (targetSong && shouldSyncToLib) {
         await saveLibrarySong(targetSong);
-      }
-      if (hasDriveAuth()) {
-        syncLibraryToDrive(state.allSongs, true);
+        if (hasDriveAuth()) {
+          syncLibraryToDrive(state.allSongs, true);
+        }
+        showSyncToast('마스터 악보 보관함에 등록되었습니다', 'success');
       }
 
       stopMetronome();
@@ -3030,6 +3302,7 @@ function wireEventListeners() {
 
     // 업로드 대상에 따른 분기 저장 (콘티에 추가 vs 곡 목록에 추가)
     const target = songUploadTarget || (state.viewLevel === 'songList' ? 'conti' : 'library');
+    const shouldAlsoAddToLib = els.songMetaAddToLibraryCheckbox ? els.songMetaAddToLibraryCheckbox.checked : true;
 
     if (target === 'library') {
       // 1. [곡 목록(보관함)에 추가]: 마스터 악보 라이브러리에 저장
@@ -3041,7 +3314,7 @@ function wireEventListeners() {
         renderSongLibraryView();
       }
     } else {
-      // 2. [콘티에 악보 추가]: 현재 콘티에만 추가 (곡 목록/보관함에는 바로 노출되지 않음)
+      // 2. [콘티에 악보 추가]: 현재 콘티에 추가
       if (state.currentContiId) {
         state.songs.push(newSong);
         await saveSongs();
@@ -3049,6 +3322,16 @@ function wireEventListeners() {
           syncContiDetailToDrive(state.currentContiId, true);
         }
         renderSongListView();
+      }
+      // 마스터 보관함 함께 등록 옵션이 체크되어 있다면 라이브러리에도 동시 저장!
+      if (shouldAlsoAddToLib) {
+        await saveLibrarySong(newSong);
+        if (hasDriveAuth()) {
+          syncLibraryToDrive(state.allSongs, true);
+        }
+        if (state.viewLevel === 'songLibrary') {
+          renderSongLibraryView();
+        }
       }
     }
 
