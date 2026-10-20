@@ -373,9 +373,10 @@ export async function syncContiDetailFromDrive(contiId) {
 
       // 스티커 및 메모 데이터 동기화
       if (detailData.stickersBySong) {
-        Object.assign(state.stickersBySong, detailData.stickersBySong);
         for (const [sId, stList] of Object.entries(detailData.stickersBySong)) {
-          await idbPut('stickers', { songId: sId, list: stList });
+          const items = Array.isArray(stList) ? stList : (stList?.items || stList?.list || []);
+          state.stickersBySong[sId] = items;
+          await idbPut('stickers', { songId: sId, items, list: items });
         }
       }
       if (detailData.notesBySong) {
@@ -416,6 +417,15 @@ export async function syncContiDetailToDrive(contiId, showToast = true) {
       }
     }
 
+    // 해당 콘티의 모든 곡에 대한 스티커를 IDB에서 안전하게 취합
+    const stickersBySong = { ...(state.stickersBySong || {}) };
+    for (const s of songs) {
+      if (!stickersBySong[s.id] || !stickersBySong[s.id].length) {
+        const rec = await idbGet('stickers', s.id);
+        if (rec) stickersBySong[s.id] = rec.items || rec.list || [];
+      }
+    }
+
     const detailData = {
       id: conti.id,
       title: conti.title || '새 콘티',
@@ -425,7 +435,7 @@ export async function syncContiDetailToDrive(contiId, showToast = true) {
       authorName: conti.authorName || '인도자',
       sharedWith: conti.sharedWith || [],
       songs: songs,
-      stickersBySong: state.stickersBySong || {},
+      stickersBySong: stickersBySong,
       updatedAt: Date.now()
     };
 

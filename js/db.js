@@ -135,6 +135,7 @@ export async function deleteLibrarySong(songId) {
    콘티(Conti) 단위 저장 및 계정 분리
    -------------------------------------------------- */
 export async function loadContis() {
+  await migrateLegacyDatabase();
   const allContis = await idbGetAll('contis');
   allContis.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
@@ -211,16 +212,146 @@ export async function saveSongs() {
 
 export async function loadStickers(songId) {
   const rec = await idbGet('stickers', songId);
-  state.stickersBySong[songId] = rec ? rec.items : [];
+  state.stickersBySong[songId] = rec ? (rec.items || rec.list || []) : [];
   return state.stickersBySong[songId];
 }
 
 export async function saveStickers(songId) {
-  await idbPut('stickers', { songId, items: state.stickersBySong[songId] || [] });
+  const items = state.stickersBySong[songId] || [];
+  await idbPut('stickers', { songId, items, list: items });
 }
 
 export async function saveUserDrawing(songId, canvas) {
   if (!songId || !canvas) return;
   const dataURL = canvas.toDataURL('image/png');
   await idbPut('notes', { songId, dataURL });
+}
+
+/* --------------------------------------------------
+   구버전(continote_db) 데이터 자동 무손실 마이그레이션
+   -------------------------------------------------- */
+export async function migrateLegacyDatabase() {
+  try {
+    const legacyDBExists = await new Promise(resolve => {
+      if (!window.indexedDB || !indexedDB.databases) {
+        const req = indexedDB.open('continote_db');
+        req.onsuccess = (e) => {
+          const db = e.target.result;
+          const hasSongs = db.objectStoreNames.contains('songs');
+          db.close();
+          resolve(hasSongs);
+        };
+        req.onerror = () => resolve(false);
+        return;
+      }
+      indexedDB.databases().then(dbs => {
+        const found = dbs.some(d => d.name === 'continote_db');
+        resolve(found);
+      }).catch(() => resolve(false));
+    });
+
+    if (!legacyDBExists) return;
+
+    const oldDB = await new Promise((resolve, reject) => {
+      const req = indexedDB.open('continote_db');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+
+    const oldStores = oldDB.objectStoreNames;
+    if (!oldStores.contains('songs')) {
+      oldDB.close();
+      return;
+    }
+
+    // 1. 구버전 songs
+    const oldSongs = await new Promise(res => {
+      const tx = oldDB.transaction('songs', 'readonly');
+      const req = tx.objectStore('songs').getAll();
+      req.onsuccess = () => res(req.result || []);
+      req.onerror = () => res([]);
+    });
+
+    // 2. 구버전 stickers
+    let oldStickers = [];
+    if (oldStores.contains('stickers')) {
+      oldStickers = await new Promise(res => {
+        const tx = oldDB.transaction('stickers', 'readonly');
+        const req = tx.objectStore('stickers').getAll();
+        req.onsuccess = () => res(req.result || []);
+        req.onerror = () => res([]);
+      });
+    }
+
+    // 3. 구버전 notes(필기)
+    let oldNotes = [];
+    if (oldStores.contains('notes')) {
+      oldNotes = await new Promise(res => {
+        const tx = oldDB.transaction('notes', 'readonly');
+        const req = tx.objectStore('notes').getAll();
+        req.onsuccess = () => res(req.result || []);
+        req.onerror = () => res([]);
+      });
+    }
+
+    oldDB.close();
+
+    if (!oldSongs.length && !oldStickers.length && !oldNotes.length) return;
+
+    console.log(`[ContiNote] 구버전(continote_db) 데이터 복원: 악보 ${oldSongs.length}곡, 스티커 ${oldStickers.length}개, 필기 ${oldNotes.length}개`);
+
+    // 신규 DB에 스티커와 필기 복원
+    for (const st of oldStickers) {
+      if (st.songId) {
+        const items = st.items || st.list || [];
+        await idbPut('stickers', { songId: st.songId, items, list: items });
+      }
+    }
+    for (const n of oldNotes) {
+      if (n.songId) {
+        await idbPut('notes', n);
+      }
+    }
+
+    // 신규 DB의 contis 확인 및 복원
+    const currentContis = await idbGetAll('contis');
+    oldSongs.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    // library(보관함)에도 보존
+    const curLib = await idbGetAll('library');
+    for (const song of oldSongs) {
+      if (!curLib.some(s => s.id === song.id)) {
+        await idbPut('library', song);
+      }
+    }
+
+    // 기본 콘티에 곡이 없거나 비어있는 경우 구버전 곡들로 자동 채우기
+    if (!currentContis.length || (currentContis.length === 1 && (!currentContis[0].songs || !currentContis[0].songs.length))) {
+      const defaultConti = currentContis[0] || {
+        id: crypto.randomUUID(),
+        title: '주일 예배 콘티',
+        date: new Date().toISOString().slice(0, 10),
+        memo: '이전 버전에서 복원된 콘티입니다.',
+        authorEmail: state.currentUser?.email || 'leader@continote.com',
+        authorName: state.currentUser?.name || '인도자',
+        sharedWith: [],
+        createdAt: Date.now()
+      };
+      defaultConti.songs = oldSongs;
+      await idbPut('contis', defaultConti);
+    } else {
+      // 기존 콘티가 있을 때도 구버전 곡 중 누락된 곡이 있으면 첫 번째 콘티에 복원
+      const firstConti = currentContis[0];
+      if (firstConti && Array.isArray(firstConti.songs)) {
+        for (const s of oldSongs) {
+          if (!firstConti.songs.some(existing => existing.id === s.id)) {
+            firstConti.songs.push(s);
+          }
+        }
+        await idbPut('contis', firstConti);
+      }
+    }
+  } catch (err) {
+    console.warn('[ContiNote] 구버전 마이그레이션 실패:', err);
+  }
 }

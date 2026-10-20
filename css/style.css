@@ -663,4 +663,65 @@ html.dark #viewer::-webkit-scrollbar-thumb:hover {
   animation: metronome-pulse-downbeat 0.16s ease-in-out;
 }
 
+/* ==========================================
+   악보 넘김 초경량 슬라이드 & 페이드 트랜지션 (180ms)
+   ========================================== */
+@keyframes sheetSlideInNextH {
+  0% {
+    opacity: 0.45;
+    transform: translate3d(28px, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes sheetSlideInPrevH {
+  0% {
+    opacity: 0.45;
+    transform: translate3d(-28px, 0, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes sheetSlideInNextV {
+  0% {
+    opacity: 0.45;
+    transform: translate3d(0, 28px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes sheetSlideInPrevV {
+  0% {
+    opacity: 0.45;
+    transform: translate3d(0, -28px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.sheet-anim-next-h {
+  animation: sheetSlideInNextH 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.sheet-anim-prev-h {
+  animation: sheetSlideInPrevH 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.sheet-anim-next-v {
+  animation: sheetSlideInNextV 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.sheet-anim-prev-v {
+  animation: sheetSlideInPrevV 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+
 

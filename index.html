@@ -126,6 +126,16 @@
         <span id="lockBtnLabel" class="hidden sm:inline text-xs font-bold leading-none">보기</span>
       </button>
 
+      <!-- 곡 보관함 뷰어 전용 공유 토글 버튼 -->
+      <button id="viewerLibraryShareBtn"
+        class="h-8 sm:h-[34px] px-2 sm:px-2.5 rounded-full border flex items-center justify-center gap-1.5 active:scale-95 transition-all shrink-0 select-none shadow-sm cursor-pointer"
+        style="display:none;border-color:var(--border);background:var(--surface-2);color:var(--text)" title="공유하기">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-3.5 h-3.5 shrink-0">
+          <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/>
+        </svg>
+        <span id="viewerLibraryShareLabel" class="hidden sm:inline text-xs font-bold leading-none">공유하기</span>
+      </button>
+
       <!-- Google 로그인 / 프로필 영역 -->
       <div id="authHeaderArea" class="flex items-center">
         <button id="headerGoogleLoginBtn"
@@ -373,6 +383,24 @@
             </button>
             <button id="navVBtn" class="px-3 sm:px-3.5 py-2 rounded-xl border font-semibold text-xs sm:text-sm active:scale-95 transition-all">
               상하 (세로)
+            </button>
+          </div>
+        </section>
+
+        <div class="border-t" style="border-color:var(--border)"></div>
+
+        <!-- 곡 넘김 효과 옵션: [부드럽게] vs [즉시 전환] -->
+        <section class="flex items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-bold">곡 넘김 효과</h3>
+            <p class="text-xs mt-0.5" style="color:var(--text-dim)">악보 넘김 시 초경량 슬라이드 효과</p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button id="pageAnimSmoothBtn" class="px-3 sm:px-3.5 py-2 rounded-xl border font-semibold text-xs sm:text-sm active:scale-95 transition-all">
+              부드럽게
+            </button>
+            <button id="pageAnimInstantBtn" class="px-3 sm:px-3.5 py-2 rounded-xl border font-semibold text-xs sm:text-sm active:scale-95 transition-all">
+              즉시 전환
             </button>
           </div>
         </section>
