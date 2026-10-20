@@ -22,6 +22,7 @@ import {
 import {
   computeAutoCropBox, renderCroppedDataURL, syncCropBoxDOM
 } from './crop.js';
+import { renderStickerLayer } from './stickers.js';
 import { setupZoomAndPan, resetZoom, updateZoomVisibility } from './zoom.js';
 import {
   setDriveAccessToken, getDriveAccessToken, hasDriveAuth, getDriveTokenExpiresAt,
@@ -134,6 +135,12 @@ function isDarkThemeActive() {
 /* ==================================================
    Web Audio API 기반 초경량 실시간 메트로놈 엔진
    ================================================== */
+// 뷰어 내 실제 변경 여부(Dirty Flag) 추적 (불필요한 뒤로가기 팝업 방지)
+let isViewerDirty = false;
+export function markViewerDirty() {
+  isViewerDirty = true;
+}
+
 let audioCtx = null;
 let metronomeTimer = null;
 let metronomeActiveBtn = null;
@@ -1439,6 +1446,7 @@ export async function openViewerForSong(songIndex) {
   }
   state.viewLevel = 'viewer';
   state.locked = true;
+  isViewerDirty = false;
   saveCurrentMenuSession();
   const song = state.songs[state.currentIndex];
   if (song && !(song.id in state.stickersBySong)) {
@@ -1649,11 +1657,10 @@ export function initBrowserHistory() {
       return;
     }
 
-    // 뷰어 편집 중 브라우저 뒤로가기 제스처 시 저장 확인
-    if (state.viewLevel === 'viewer' && !state.locked && hasDriveAuth() && state.currentContiId) {
-      if (confirm('편집 중인 내용이 있습니다. 저장하시겠습니까?')) {
-        syncContiDetailToDrive(state.currentContiId, true);
-      }
+    // 뷰어에서 뒤로가기 시 실제 변경사항이 있을 때만 백그라운드 자동 저장 (사용자 방해 confirm 팝업 제거)
+    if (state.viewLevel === 'viewer' && isViewerDirty && hasDriveAuth() && state.currentContiId) {
+      syncContiDetailToDrive(state.currentContiId, false);
+      isViewerDirty = false;
     }
 
     const targetState = event.state;
@@ -1719,11 +1726,9 @@ async function restoreNavigationState(targetState) {
 export function handleDirectBack() {
   stopMetronome();
   if (state.viewLevel === 'viewer') {
-    const wasEditing = !state.locked;
-    if (wasEditing && hasDriveAuth() && state.currentContiId) {
-      if (confirm('편집 중인 내용이 있습니다. 저장하시겠습니까?')) {
-        syncContiDetailToDrive(state.currentContiId, true);
-      }
+    if (isViewerDirty && hasDriveAuth() && state.currentContiId) {
+      syncContiDetailToDrive(state.currentContiId, false);
+      isViewerDirty = false;
     }
     if (state.viewerReturnView === 'songLibrary') {
       state.viewLevel = 'songLibrary';
