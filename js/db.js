@@ -129,6 +129,13 @@ export async function deleteLibrarySong(songId) {
     state.allSongs.splice(idx, 1);
     await idbDelete('library', songId);
   }
+  // 스티커 데이터도 함께 정리 (고아 스티커 방지)
+  try {
+    await idbDelete('stickers', songId);
+  } catch (_) {}
+  if (state.stickersBySong && songId in state.stickersBySong) {
+    delete state.stickersBySong[songId];
+  }
 }
 
 /* --------------------------------------------------
@@ -138,25 +145,6 @@ export async function loadContis() {
   await migrateLegacyDatabase();
   const allContis = await idbGetAll('contis');
   allContis.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-
-  if (!allContis.length) {
-    const oldSongs = await idbGetAll('songs');
-    oldSongs.sort((a, b) => (a.order || 0) - (b.order || 0));
-
-    const defaultConti = {
-      id: crypto.randomUUID(),
-      title: '주일 1부 예배 콘티',
-      date: new Date().toISOString().slice(0, 10),
-      memo: '은혜로운 예배 찬양 콘티입니다.',
-      authorEmail: state.currentUser?.email || 'leader@continote.com',
-      authorName: state.currentUser?.name || '인도자',
-      sharedWith: [],
-      songs: oldSongs || [],
-      createdAt: Date.now()
-    };
-    allContis.push(defaultConti);
-    await idbPut('contis', defaultConti);
-  }
 
   // 데이터 안전성: authorEmail 및 sharedWith 배열 보장
   allContis.forEach(c => {
@@ -174,24 +162,53 @@ export async function saveContis() {
   }
 }
 
+export function getContiSongCount(c) {
+  if (!c) return 0;
+  if (Array.isArray(c.songs) && !c._needDetailSync) {
+    return c.songs.length;
+  }
+  if (c.songCount !== undefined && c.songCount !== null) {
+    return Number(c.songCount) || 0;
+  }
+  return Array.isArray(c.songs) ? c.songs.length : 0;
+}
+
 export async function saveCurrentConti() {
   const current = state.contis.find(c => c.id === state.currentContiId);
   if (current) {
-    current.songs = state.songs;
+    current.songs = state.songs || [];
+    current.songCount = current.songs.length;
+    current.updatedAt = Date.now();
+    current._needDetailSync = false;
     await idbPut('contis', current);
   }
 }
 
 export async function deleteConti(contiId) {
   const idx = state.contis.findIndex(c => c.id === contiId);
+  let removed = null;
   if (idx !== -1) {
-    const [removed] = state.contis.splice(idx, 1);
-    await idbDelete('contis', contiId);
-    if (removed && removed.songs) {
-      for (const s of removed.songs) {
-        await idbDelete('songs', s.id);
-        await idbDelete('notes', s.id);
-        await idbDelete('stickers', s.id);
+    [removed] = state.contis.splice(idx, 1);
+  }
+  await idbDelete('contis', contiId);
+
+  const songsToPreserve = (removed && removed.songs && removed.songs.length > 0)
+    ? removed.songs
+    : ((state.currentContiId === contiId && state.songs && state.songs.length > 0) ? state.songs : []);
+
+  if (state.currentContiId === contiId) {
+    state.currentContiId = null;
+    state.songs = [];
+  }
+
+  // 콘티를 삭제하더라도 곡은 절대 삭제하지 않고 마스터 악보 보관함(library)에 안전하게 영구 보존
+  if (songsToPreserve.length > 0) {
+    const curLib = await idbGetAll('library');
+    const libMap = new Map(curLib.map(s => [s.id, s]));
+    for (const s of songsToPreserve) {
+      if (!libMap.has(s.id)) {
+        await idbPut('library', s);
+        state.allSongs.push(s);
       }
     }
   }
@@ -231,6 +248,9 @@ export async function saveUserDrawing(songId, canvas) {
    구버전(continote_db) 데이터 자동 무손실 마이그레이션
    -------------------------------------------------- */
 export async function migrateLegacyDatabase() {
+  if (typeof localStorage !== 'undefined' && localStorage.getItem('continote_legacy_migrated') === 'true') {
+    return;
+  }
   try {
     const legacyDBExists = await new Promise(resolve => {
       if (!window.indexedDB || !indexedDB.databases) {
@@ -350,6 +370,9 @@ export async function migrateLegacyDatabase() {
         }
         await idbPut('contis', firstConti);
       }
+    }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('continote_legacy_migrated', 'true');
     }
   } catch (err) {
     console.warn('[ContiNote] 구버전 마이그레이션 실패:', err);

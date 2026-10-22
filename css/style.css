@@ -298,6 +298,28 @@ html.dark #baseCanvasRight {
   color: #ffffff !important;
 }
 
+/* 태블릿 이상 좌우 스위치 토글 스타일 */
+.lock-switch-active-view {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.lock-switch-inactive {
+  background: transparent !important;
+  color: var(--text-dim) !important;
+  border: 1px solid transparent !important;
+}
+.lock-switch-inactive:hover {
+  color: var(--text) !important;
+}
+.lock-switch-active-edit {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  border: 1px solid var(--accent) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
 /* [5. 알파벳 I 파트 고유 세리프 폰트] */
 .part-serif-i {
   font-family: 'Playfair Display', Georgia, 'Times New Roman', serif !important;
@@ -463,6 +485,16 @@ html.dark #baseCanvasRight {
 }
 
 /* 하단 안전 구역 대응 및 z-index 보강 */
+#contiSessionLineupBar {
+  position: relative;
+  z-index: 39;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#contiSessionLineupBar::-webkit-scrollbar {
+  display: none;
+}
+
 #bottomNav {
   padding-bottom: max(env(safe-area-inset-bottom, 0px), 6px);
   position: relative;

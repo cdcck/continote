@@ -11,7 +11,8 @@ export const state = {
   viewLevel: 'contiList', // 'contiList' | 'songList' | 'viewer' | 'songLibrary' | 'settings'
   viewerReturnView: null, // 'songList' | 'songLibrary' (뷰어에서 뒤로갈 대상 뷰)
   currentUser: null, // 로그인 사용자 정보 { email, name, picture }
-  contis: [], // 콘티 목록 [{ id, title, date, memo, authorEmail, authorName, sharedWith: [], songs: [] }]
+  teamMembers: [], // @changdae.cc 찬양팀원 풀 [{ name, email, picture, lastActive }]
+  contis: [], // 콘티 목록 [{ id, title, date, memo, authorEmail, authorName, sharedWith: [], sessions: [], songs: [] }]
   currentContiId: null, // 현재 선택된 콘티 ID
   songs: [], // 현재 콘티의 곡 목록 (동기화)
   currentIndex: 0,

@@ -25,9 +25,21 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
     img.onload = () => {
       const areaX = bounds ? bounds.x : 0;
       const areaY = bounds ? bounds.y : 0;
-      const areaW = bounds ? bounds.w : viewer.clientWidth;
-      const areaH = bounds ? bounds.h : viewer.clientHeight;
-      if (areaW <= 0 || areaH <= 0) return resolve();
+      let areaW = bounds ? bounds.w : viewer.clientWidth;
+      let areaH = bounds ? bounds.h : viewer.clientHeight;
+      if (areaW <= 0 || areaH <= 0) {
+        // 메뉴 전환 직후 아직 layout reflow 중인 경우 다음 프레임에서 1회 재측정 렌더링
+        requestAnimationFrame(() => {
+          const retryW = bounds ? bounds.w : viewer.clientWidth;
+          const retryH = bounds ? bounds.h : viewer.clientHeight;
+          if (retryW > 0 && retryH > 0) {
+            renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds).then(resolve);
+          } else {
+            resolve();
+          }
+        });
+        return;
+      }
 
       // 악보 종횡비 유지 계산 (가로는 지정 영역 가운데 정렬, 세로는 상단 여백 없이 위로 밀착)
       const scale = Math.min(areaW / img.width, areaH / img.height);

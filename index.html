@@ -20,8 +20,6 @@
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Google Identity Services (GIS) for Google Drive REST API v3 -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
 
   <!-- 모듈화된 전용 CSS 스타일시트 -->
   <link rel="stylesheet" href="css/style.css" />
@@ -105,26 +103,54 @@
         <span id="viewerBpmText">--</span>
       </button>
 
-      <!-- 자물쇠 토글 버튼 (토글 스위치 형태) -->
-      <button id="lockBtn"
-        class="h-8 sm:h-[34px] px-2 sm:px-2.5 rounded-full border flex items-center justify-center gap-1.5 active:scale-95 transition-all shrink-0 select-none shadow-sm cursor-pointer lock-view-mode"
-        style="display:none;border-color:var(--border);background:var(--surface-2);color:var(--text-dim)" title="보기/편집 모드 전환">
-        <span id="lockClosedIcon" class="flex items-center justify-center">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round" class="w-4 h-4">
-            <rect x="5" y="11" width="14" height="10" rx="2" />
-            <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-          </svg>
-        </span>
-        <span id="lockOpenIcon" class="flex items-center justify-center" style="display:none">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round" class="w-4 h-4">
-            <rect x="5" y="11" width="14" height="10" rx="2" />
-            <path d="M8 9V5a4 4 0 0 1 8 0v2" />
-          </svg>
-        </span>
-        <span id="lockBtnLabel" class="hidden sm:inline text-xs font-bold leading-none">보기</span>
-      </button>
+      <!-- 보기 / 편집 모드 토글 (모바일: 컴팩트 원버튼, 태블릿 이상: 좌우 스위치 세그먼트 토글) -->
+      <div id="lockToggleContainer" class="items-center shrink-0 select-none" style="display:none">
+        <!-- 1. 모바일 전용 토글 버튼 (md:hidden) -->
+        <button id="lockBtn"
+          class="md:hidden h-8 px-2 sm:px-2.5 rounded-full border flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-sm cursor-pointer lock-view-mode"
+          style="border-color:var(--border);background:var(--surface-2);color:var(--text-dim)" title="보기/편집 모드 전환">
+          <span id="lockClosedIcon" class="flex items-center justify-center">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" class="w-4 h-4">
+              <rect x="5" y="11" width="14" height="10" rx="2" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+          </span>
+          <span id="lockOpenIcon" class="flex items-center justify-center" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" class="w-4 h-4">
+              <rect x="5" y="11" width="14" height="10" rx="2" />
+              <path d="M8 9V5a4 4 0 0 1 8 0v2" />
+            </svg>
+          </span>
+          <span id="lockBtnLabel" class="hidden sm:inline text-xs font-bold leading-none">보기</span>
+        </button>
+
+        <!-- 2. 태블릿 이상 좌우 스위치 세그먼트 토글 (hidden md:flex) -->
+        <div id="lockSwitch"
+          class="hidden md:flex items-center p-0.5 rounded-full border shadow-2xs transition-all select-none"
+          style="border-color:var(--border);background:var(--surface-2)" role="group" aria-label="보기/편집 모드 전환">
+          <!-- 좌측: 보기 -->
+          <button id="lockSwitchViewBtn" type="button"
+            class="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer lock-switch-active-view"
+            title="보기 모드">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5 shrink-0">
+              <rect x="5" y="11" width="14" height="10" rx="2" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+            <span>보기</span>
+          </button>
+          <!-- 우측: 편집 -->
+          <button id="lockSwitchEditBtn" type="button"
+            class="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer lock-switch-inactive"
+            title="편집 모드">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5 shrink-0">
+              <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+            </svg>
+            <span>편집</span>
+          </button>
+        </div>
+      </div>
 
       <!-- 곡 보관함 뷰어 전용 공유 토글 버튼 -->
       <button id="viewerLibraryShareBtn"
@@ -470,35 +496,53 @@
       <!-- [4. 클라우드 연동 및 기기 설치] -->
       <div class="p-4 sm:p-5 rounded-2xl border space-y-5"
         style="border-color:var(--border);background:var(--surface)">
-        <!-- Google Drive REST API v3 / GIS 클라우드 연동 -->
+        <!-- Firebase 클라우드 연동 상태 -->
         <section>
           <div class="flex items-center justify-between mb-2">
-            <h3 class="text-sm font-bold">Google Drive 클라우드 연동</h3>
-            <span class="text-xs" style="color:var(--text-dim)">콘티 및 필기 백업</span>
+            <h3 class="text-sm font-bold">Firebase 클라우드 연동</h3>
+            <span id="cloudSyncStatusBadge" class="px-2 py-0.5 rounded-full text-xs font-bold" style="background:var(--accent-soft);color:var(--accent)">실시간 동기화</span>
           </div>
-          <button id="driveConnectBtn"
-            class="w-full flex items-center justify-center gap-2 py-3 rounded-xl border font-semibold text-sm transition-all"
+          <div class="p-3.5 rounded-xl border flex items-center justify-between gap-3"
             style="border-color:var(--border);background:var(--surface-2)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-              stroke-linejoin="round" class="w-5 h-5">
-              <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                style="background:var(--accent-soft);color:var(--accent)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4.5 h-4.5">
+                  <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+                </svg>
+              </div>
+              <div class="min-w-0">
+                <span id="cloudUserOrgDisplay" class="font-bold text-xs block truncate" style="color:var(--text)">소속 교회</span>
+                <span id="cloudUserEmailDisplay" class="text-[11px] block truncate" style="color:var(--text-dim)">계정 이메일</span>
+              </div>
+            </div>
+            <span class="text-xs font-bold text-emerald-500 shrink-0 flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>정상 연결</span>
+            </span>
+          </div>
+        </section>
+
+        <!-- 교회 찬양팀 관리자 전용: 팀원 가입 승인 -->
+        <section id="orgAdminSection" style="display:none">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-bold">교회 팀원 관리 (관리자)</h3>
+            <span id="orgAdminPendingBadge" class="px-2 py-0.5 rounded-full text-xs font-bold text-white" style="background:var(--accent);display:none">0명 대기</span>
+          </div>
+          <button id="openOrgAdminBtn"
+            class="w-full flex items-center justify-center gap-2 py-3 rounded-xl border font-semibold text-sm transition-all active:scale-95 shadow-sm"
+            style="border-color:var(--border);background:var(--surface-2)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4.5 h-4.5">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
             </svg>
-            <span id="driveStatusText">Google 드라이브 연결</span>
-          </button>
-          <button id="driveManualSyncBtn"
-            class="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl border font-semibold text-xs transition-all active:scale-95 shadow-sm"
-            style="border-color:var(--border);background:var(--surface);display:none" title="Google Drive로 현재 모든 콘티와 악보를 즉시 백업합니다">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 text-blue-500">
-              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-              <path d="M3 3v5h5" />
-              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-              <path d="M16 21h5v-5" />
-            </svg>
-            <span>지금 전체 클라우드 동기화 (수동 백업)</span>
+            <span>팀원 가입 승인 관리 열기</span>
           </button>
         </section>
 
-        <div class="border-t" style="border-color:var(--border)"></div>
+        <div id="orgAdminSectionDivider" class="border-t" style="border-color:var(--border);display:none"></div>
 
         <!-- PWA 앱 설치하기 -->
         <section id="pwaInstallSection">
@@ -773,6 +817,14 @@
       </svg>
       <span class="hidden sm:inline">텍스트 메모</span>
     </button>
+  </div>
+
+  <!-- ==========================================
+       [1.5] 콘티 세션/팀원 배정 현황 바 (하단 메뉴 바로 위)
+       ========================================== -->
+  <div id="contiSessionLineupBar"
+    class="shrink-0 border-t px-3 py-1.5 flex items-center gap-2 select-none overflow-x-auto no-scrollbar transition-all"
+    style="display:none;border-color:var(--border);background:var(--surface-2);min-height:36px">
   </div>
 
   <!-- ==========================================
@@ -1133,9 +1185,9 @@
   <div id="contiModal" class="app-modal fixed inset-0 z-50 flex items-end sm:items-center justify-center select-none"
     style="display:none">
     <div class="absolute inset-0 modal-backdrop" data-close-conti-modal></div>
-    <div class="relative w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl flex flex-col shadow-2xl overflow-hidden z-10"
+    <div class="relative w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl flex flex-col shadow-2xl overflow-hidden z-10 max-h-[88vh]"
       style="background:var(--surface)">
-      <div class="flex items-center justify-between px-4 py-3.5 border-b" style="border-color:var(--border)">
+      <div class="flex items-center justify-between px-4 py-3.5 border-b shrink-0" style="border-color:var(--border)">
         <h2 id="contiModalTitle" class="font-bold text-base">새 예배 콘티</h2>
         <button data-close-conti-modal class="p-1.5 w-8 h-8 rounded-lg hover:bg-black/5 dark:hover:bg-white/5">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-full h-full">
@@ -1143,7 +1195,7 @@
           </svg>
         </button>
       </div>
-      <div class="p-4 space-y-3.5">
+      <div class="p-4 space-y-3.5 overflow-y-auto flex-1">
         <div>
           <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">콘티 제목 *</label>
           <input id="contiTitleInput" type="text" placeholder="예: 10월 18일 주일 1부 예배"
@@ -1162,8 +1214,29 @@
             class="w-full px-3.5 py-2.5 rounded-xl border text-sm font-semibold outline-none focus:ring-2"
             style="border-color:var(--border);background:var(--surface-2);color:var(--text)" />
         </div>
+
+        <!-- 찬양팀 세션 배정 (동적 추가 방식) -->
+        <div class="pt-2 border-t" style="border-color:var(--border)">
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <span class="text-xs font-semibold block" style="color:var(--text)">찬양팀 세션 배정</span>
+              <span class="text-[11px]" style="color:var(--text-dim)">콘티 참여 세션과 팀원을 배정합니다</span>
+            </div>
+            <button id="addContiSessionRowBtn" type="button"
+              class="px-2.5 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1 shrink-0 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all shadow-sm"
+              style="border-color:var(--border);background:var(--surface);color:var(--accent)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="w-3.5 h-3.5">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              <span>세션 추가</span>
+            </button>
+          </div>
+          <div id="contiSessionList" class="space-y-2 max-h-48 overflow-y-auto pr-0.5">
+            <!-- 동적으로 세션 행이 추가되는 영역 -->
+          </div>
+        </div>
       </div>
-      <div class="p-3 border-t flex gap-2" style="border-color:var(--border)">
+      <div class="p-3 border-t flex gap-2 shrink-0" style="border-color:var(--border)">
         <button id="contiSaveBtn"
           class="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all"
           style="background:var(--accent)">
@@ -1261,6 +1334,193 @@
           <span>콘티 공유 링크 복사</span>
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       [인도자 도구] 악보 이미지 유사도(pHash) 중복 감지 모달
+       ========================================== -->
+  <div id="duplicateSongModal" class="app-modal fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
+    style="display:none">
+    <div class="absolute inset-0 modal-backdrop" data-close-duplicate-modal></div>
+    <div class="relative w-full max-w-md rounded-2xl p-5 shadow-2xl z-10 space-y-4 max-h-[85vh] overflow-y-auto"
+      style="background:var(--surface)">
+      <!-- 모달 헤더 -->
+      <div class="flex items-center justify-between border-b pb-3" style="border-color:var(--border)">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🔍</span>
+          <h2 class="font-bold text-base">동일한 악보가 이미 등록되어 있습니다</h2>
+        </div>
+        <button data-close-duplicate-modal class="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-5 h-5">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- 유사도 안내 배너 -->
+      <div class="p-3.5 rounded-xl border flex items-center justify-between gap-3"
+        style="border-color:var(--accent);background:var(--accent-soft)">
+        <div class="min-w-0">
+          <span class="text-xs font-semibold block" style="color:var(--text-dim)">기존 등록 곡</span>
+          <p id="dupSongMatchedTitle" class="font-extrabold text-sm sm:text-base truncate" style="color:var(--accent)">곡 제목</p>
+        </div>
+        <span id="dupSongSimilarityBadge" class="px-2.5 py-1 rounded-full text-xs font-black shrink-0 text-white"
+          style="background:var(--accent)">유사도 92%</span>
+      </div>
+
+      <p class="text-xs leading-relaxed" style="color:var(--text-dim)">
+        업로드하신 악보와 이미지 지문이 거의 일치하는 마스터 악보가 이미 교회 보관함에 있습니다. 어떻게 진행하시겠습니까?
+      </p>
+
+      <!-- 선택 액션 버튼 2개 -->
+      <div class="space-y-2 pt-1">
+        <button id="dupSongAddVersionBtn"
+          class="w-full py-3 px-4 rounded-xl text-white font-bold text-sm shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
+          style="background:var(--accent)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          <span>이 곡의 '새로운 버전'으로 등록하기 (권장)</span>
+        </button>
+        <button id="dupSongCreateNewBtn"
+          class="w-full py-2.5 px-4 rounded-xl border font-semibold text-xs sm:text-sm active:scale-95 transition-all flex items-center justify-center gap-1.5"
+          style="border-color:var(--border);background:var(--surface-2);color:var(--text)">
+          <span>별도의 새로운 독립 곡으로 등록</span>
+        </button>
+      </div>
+
+      <div class="pt-2 border-t flex justify-end" style="border-color:var(--border)">
+        <button data-close-duplicate-modal class="text-xs font-semibold px-3 py-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">
+          취소
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       [인증/온보딩] 교회(조직) 선택 및 가입 모달
+       ========================================== -->
+  <div id="orgOnboardingModal" class="app-modal fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
+    style="display:none">
+    <div class="absolute inset-0 modal-backdrop"></div>
+    <div class="relative w-full max-w-md rounded-2xl p-5 shadow-2xl z-10 space-y-4 max-h-[85vh] overflow-y-auto"
+      style="background:var(--surface)">
+      <div class="flex items-center justify-between border-b pb-3" style="border-color:var(--border)">
+        <div>
+          <h2 class="font-bold text-base">교회(조직) 선택</h2>
+          <p class="text-xs mt-0.5" style="color:var(--text-dim)">ContiNote를 사용할 교회/찬양팀을 선택하세요</p>
+        </div>
+      </div>
+
+      <!-- 탭: [기존 교회 가입 신청] vs [새 교회 만들기] -->
+      <div class="grid grid-cols-2 p-1 rounded-xl border text-xs font-bold"
+        style="border-color:var(--border);background:var(--surface-2)">
+        <button id="orgTabJoinBtn" type="button" class="py-2 rounded-lg transition-all"
+          style="background:var(--accent);color:#fff">기존 교회 가입 신청</button>
+        <button id="orgTabCreateBtn" type="button" class="py-2 rounded-lg transition-all"
+          style="color:var(--text-dim)">새 교회 만들기</button>
+      </div>
+
+      <!-- 탭 1: 기존 교회 가입 신청 패널 -->
+      <div id="orgJoinPanel" class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">가입할 교회 선택 *</label>
+          <select id="orgJoinSelect"
+            class="w-full px-3.5 py-2.5 rounded-xl border text-sm font-semibold outline-none focus:ring-2"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)">
+            <option value="">교회를 선택하세요</option>
+          </select>
+        </div>
+        <p class="text-[11px] leading-relaxed" style="color:var(--text-dim)">
+          * 가입 신청 후 해당 교회 관리자가 승인하면 모든 공유 콘티와 악보를 이용하실 수 있습니다.
+        </p>
+        <button id="orgSubmitJoinBtn"
+          class="w-full py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all"
+          style="background:var(--accent)">
+          가입 신청하기
+        </button>
+      </div>
+
+      <!-- 탭 2: 새 교회 만들기 패널 -->
+      <div id="orgCreatePanel" class="space-y-3" style="display:none">
+        <div>
+          <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">교회 / 단체 이름 *</label>
+          <input id="orgCreateNameInput" type="text" placeholder="예: 창대교회 청년부"
+            class="w-full px-3.5 py-2.5 rounded-xl border text-sm font-semibold outline-none focus:ring-2"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" />
+        </div>
+        <p class="text-[11px] leading-relaxed" style="color:var(--text-dim)">
+          * 새 교회를 생성하면 본인이 최초 관리자로 지정되어 즉시 사용 가능하며, 다른 팀원의 가입을 승인할 수 있습니다.
+        </p>
+        <button id="orgSubmitCreateBtn"
+          class="w-full py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all"
+          style="background:var(--accent)">
+          새 교회 생성하고 시작하기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       [인증/승인 대기] 승인 대기 중 전용 전체 화면 오버레이
+       ========================================== -->
+  <div id="pendingApprovalScreen" class="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 text-center select-none"
+    style="display:none;background:var(--bg)">
+    <div class="max-w-sm w-full p-6 rounded-3xl border shadow-xl flex flex-col items-center gap-4"
+      style="border-color:var(--border);background:var(--surface)">
+      <div class="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl"
+        style="background:var(--accent-soft);color:var(--accent)">
+        ⏳
+      </div>
+      <div>
+        <h2 class="font-extrabold text-lg sm:text-xl">승인 대기 중입니다</h2>
+        <p id="pendingOrgNameDisplay" class="text-xs font-bold mt-1" style="color:var(--accent)">창대교회</p>
+      </div>
+      <p class="text-xs leading-relaxed" style="color:var(--text-dim)">
+        교회 관리자의 승인이 완료될 때까지 잠시 기다려주세요.<br />
+        승인이 완료되면 모든 콘티와 악보를 이용하실 수 있습니다.
+      </p>
+      <div class="w-full space-y-2 pt-2 border-t" style="border-color:var(--border)">
+        <button id="pendingRefreshBtn"
+          class="w-full py-2.5 rounded-xl text-white font-semibold text-xs shadow-sm active:scale-95 transition-all flex items-center justify-center gap-1.5"
+          style="background:var(--accent)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+          <span>승인 여부 새로고침</span>
+        </button>
+        <button id="pendingLogoutBtn"
+          class="w-full py-2 rounded-xl border text-xs font-semibold active:scale-95 transition-all"
+          style="border-color:var(--border);background:var(--surface-2);color:var(--text-dim)">
+          다른 계정으로 로그인 / 로그아웃
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       [관리자 도구] 팀원 가입 승인 관리 모달
+       ========================================== -->
+  <div id="orgAdminModal" class="app-modal fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
+    style="display:none">
+    <div class="absolute inset-0 modal-backdrop" data-close-org-admin></div>
+    <div class="relative w-full max-w-md rounded-2xl p-5 shadow-2xl z-10 space-y-3.5 max-h-[85vh] flex flex-col"
+      style="background:var(--surface)">
+      <div class="flex items-center justify-between border-b pb-3 shrink-0" style="border-color:var(--border)">
+        <div>
+          <h2 class="font-bold text-base">찬양팀원 가입 승인</h2>
+          <p class="text-xs mt-0.5" style="color:var(--text-dim)">가입 대기 중인 팀원을 승인해주세요</p>
+        </div>
+        <button data-close-org-admin class="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-5 h-5">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <!-- 대기 팀원 목록 컨테이너 -->
+      <div id="orgPendingUsersList" class="flex-1 overflow-y-auto space-y-2 max-h-72 pr-0.5"></div>
     </div>
   </div>
 
@@ -1375,27 +1635,42 @@
   <div id="addToContiModal" class="app-modal fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
     style="display:none">
     <div class="absolute inset-0 modal-backdrop" data-close-add-to-conti></div>
-    <div class="relative w-full max-w-sm rounded-2xl p-4 shadow-2xl z-10 space-y-3.5 max-h-[85vh] overflow-y-auto"
+    <div class="relative w-full max-w-md rounded-2xl p-4 sm:p-5 shadow-2xl z-10 space-y-3.5 max-h-[85vh] flex flex-col"
       style="background:var(--surface)">
-      <div class="flex items-center justify-between border-b pb-2.5 sticky top-0 z-10"
+      <div class="flex items-center justify-between border-b pb-2.5 shrink-0"
         style="border-color:var(--border);background:var(--surface)">
-        <div>
+        <div class="min-w-0 pr-2">
           <h2 class="font-bold text-base">내 콘티에 악보 추가</h2>
           <p id="addToContiSongTitle" class="text-xs truncate font-semibold mt-0.5" style="color:var(--accent)"></p>
         </div>
-        <button data-close-add-to-conti class="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5">
+        <button data-close-add-to-conti class="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 shrink-0">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-5 h-5">
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
         </button>
       </div>
 
-      <div class="space-y-1.5">
-        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">추가할 콘티를 선택하세요</label>
-        <div id="addToContiListContainer" class="space-y-2 max-h-48 overflow-y-auto"></div>
+      <!-- 콘티 실시간 검색창 -->
+      <div class="relative shrink-0">
+        <input id="addToContiSearchInput" type="text" placeholder="콘티명 또는 날짜 검색..."
+          class="w-full pl-8 pr-3 py-2 text-xs rounded-xl border outline-none transition-all focus:border-[var(--accent)]"
+          style="background:var(--surface-2);border-color:var(--border);color:var(--text)" />
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          class="w-4 h-4 absolute left-2.5 top-2.5 pointer-events-none" style="color:var(--text-dim)">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
       </div>
 
-      <div class="pt-2 border-t flex gap-2" style="border-color:var(--border)">
+      <div class="space-y-1.5 flex-1 min-h-0 flex flex-col">
+        <div class="flex items-center justify-between text-xs font-semibold px-0.5" style="color:var(--text-dim)">
+          <span>추가할 대상 콘티 선택</span>
+          <span id="addToContiCountBadge" class="text-[11px]"></span>
+        </div>
+        <div id="addToContiListContainer" class="space-y-2 max-h-[50vh] overflow-y-auto pr-1 no-scrollbar flex-1"></div>
+      </div>
+
+      <div class="pt-2 border-t flex gap-2 shrink-0" style="border-color:var(--border)">
         <button data-close-add-to-conti class="flex-1 py-2.5 rounded-xl border font-semibold text-sm"
           style="border-color:var(--border);background:var(--surface-2)">취소</button>
         <button id="confirmAddToContiBtn" class="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm"

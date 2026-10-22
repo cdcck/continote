@@ -5,10 +5,12 @@
  */
 
 import { state } from './state.js';
-import { getDB, idbGet, idbPut, idbGetAll } from './db.js';
+import { getDB, idbGet, idbPut, idbGetAll, idbDelete, loadStickers, saveStickers, getContiSongCount } from './db.js';
 
 const DRIVE_FOLDER_NAME = 'Continote';
 const INDEX_FILE_NAME = 'contis_index.json';
+const MEMBERS_FILE_NAME = 'team_members.json';
+const MEMBERS_STORAGE_KEY = 'continote_team_members';
 const TOKEN_STORAGE_KEY = 'continote_gdrive_token';
 const TOKEN_EXPIRES_KEY = 'continote_gdrive_token_expires';
 
@@ -50,7 +52,7 @@ export function getDriveTokenExpiresAt() {
 }
 
 export function hasDriveAuth() {
-  return Boolean(getDriveAccessToken());
+  return false; // Firebase 전면 전환으로 Google Drive 연동 비활성화
 }
 
 // 상단 미니멀 동기화 상태 토스트 알림
@@ -257,16 +259,22 @@ async function downloadJsonFile(fileId) {
 /* ==================================================
    [1단계] 콘티 목록 메타데이터 동기화 (contis_index.json)
    ================================================== */
-export async function syncContisIndexFromDrive() {
+export async function syncContisIndexFromDrive(force = false) {
   if (!hasDriveAuth()) return state.contis;
 
   try {
     showSyncToast('콘티 목록 동기화 중...', 'loading');
-    const indexFile = await findFileInAppFolder(INDEX_FILE_NAME);
+    const indexFile = await findFileInAppFolder(INDEX_FILE_NAME, !force);
 
     if (!indexFile) {
-      // 드라이브에 아직 index가 없으면 현재 로컬 콘티 목록을 드라이브로 최초 업로드
-      await syncContisIndexToDrive(state.contis, false);
+      // 드라이브에 아직 index가 없으면 유효한 콘티만 최초 업로드 (더미 콘티 제외)
+      const validContis = (state.contis || []).filter(c => {
+        const isDefaultDummy = (c.authorEmail === 'leader@continote.com' || !c.authorEmail) && (!c.songs || c.songs.length === 0) && c.title === '주일 1부 예배 콘티';
+        return !isDefaultDummy;
+      });
+      if (validContis.length > 0) {
+        await syncContisIndexToDrive(validContis, false);
+      }
       showSyncToast('콘티 목록 동기화 완료', 'success');
       return state.contis;
     }
@@ -277,19 +285,23 @@ export async function syncContisIndexFromDrive() {
     // 로컬과 Drive 콘티 목록 병합 (Drive 최신 반영)
     const localContis = await idbGetAll('contis');
     const localMap = new Map(localContis.map(c => [c.id, c]));
+    const remoteIdSet = new Set(driveIndex.map(r => r.id));
 
+    // 1. 드라이브 인덱스 항목들을 로컬에 반영/갱신
     driveIndex.forEach(remote => {
+      if (!remote || !remote.id) return;
       const local = localMap.get(remote.id);
       if (!local) {
-        // 드라이브에만 있는 콘티는 메타데이터로 로컬에 추가 (상세 songs는 2단계 진입 시 로드)
+        // 드라이브에만 있는 콘티는 메타데이터로 로컬에 추가 (상세 songs는 지연 로드 대상)
         const newConti = {
           id: remote.id,
           title: remote.title || '새 콘티',
           date: remote.date || new Date().toISOString().slice(0, 10),
           memo: remote.memo || '',
-          authorEmail: remote.authorEmail || 'leader@continote.com',
+          authorEmail: remote.authorEmail || state.currentUser?.email || 'leader@continote.com',
           authorName: remote.authorName || '인도자',
           sharedWith: remote.sharedWith || [],
+          sessions: remote.sessions || [],
           songs: [], // 지연 로딩 대상
           songCount: remote.songCount || 0,
           createdAt: remote.createdAt || Date.now(),
@@ -301,16 +313,62 @@ export async function syncContisIndexFromDrive() {
         // 메타데이터 업데이트 (업데이트 시각 비교 후 덮어쓰기)
         const remoteUpdated = remote.updatedAt || 0;
         const localUpdated = local.updatedAt || 0;
-        if (remoteUpdated > localUpdated) {
+        if (remoteUpdated >= localUpdated || force || !local.songs || local.songs.length === 0) {
           local._needDetailSync = true;
         }
         local.title = remote.title || local.title;
         local.date = remote.date || local.date;
         local.memo = remote.memo ?? local.memo;
-        local.songCount = remote.songCount ?? (local.songs ? local.songs.length : 0);
+        local.songCount = getContiSongCount(local);
         local.updatedAt = remoteUpdated || localUpdated;
+        if (remote.authorEmail) local.authorEmail = remote.authorEmail;
+        if (remote.authorName) local.authorName = remote.authorName;
+        if (remote.sharedWith) local.sharedWith = remote.sharedWith;
+        if (remote.sessions) local.sessions = remote.sessions;
       }
     });
+
+    // 2. 드라이브 인덱스에 없는 로컬 콘티 처리 (원격에서 삭제된 콘티 동기화 삭제)
+    const myEmail = state.currentUser?.email || 'leader@continote.com';
+
+    for (const [id, local] of localMap.entries()) {
+      if (!remoteIdSet.has(id)) {
+        const isDummy = (local.authorEmail === 'leader@continote.com' || !local.authorEmail) && (!local.songs || local.songs.length === 0);
+        const isMine = (local.authorEmail === myEmail) || (local.authorEmail === 'leader@continote.com');
+        if (isDummy || isMine) {
+          localMap.delete(id);
+          await idbDelete('contis', id);
+        }
+      }
+    }
+
+    // 3. 날짜만 갱신되며 중복 생성된 빈 더미 콘티 정리 (Deduplication)
+    const allList = Array.from(localMap.values());
+    const realContis = allList.filter(c => (c.songs && c.songs.length > 0) || (c.songCount && c.songCount > 0) || (c.title !== '주일 1부 예배 콘티' && c.title !== '새 콘티'));
+
+    let deduplicated = false;
+    if (realContis.length > 0) {
+      // 실제 유효 콘티가 존재하면 빈 더미 콘티는 모두 제거
+      for (const c of allList) {
+        const isDummy = (!c.songs || c.songs.length === 0) && (!c.songCount || c.songCount === 0) && (c.title === '주일 1부 예배 콘티' || c.title === '새 콘티');
+        if (isDummy) {
+          localMap.delete(c.id);
+          await idbDelete('contis', c.id);
+          deduplicated = true;
+        }
+      }
+    } else {
+      // 실제 콘티가 없더라도 동일한 빈 더미 콘티가 2개 이상이면 최신 1개만 남기고 정리
+      const dummies = allList.filter(c => (!c.songs || c.songs.length === 0) && (!c.songCount || c.songCount === 0) && c.title === '주일 1부 예배 콘티');
+      if (dummies.length > 1) {
+        dummies.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        for (let i = 1; i < dummies.length; i++) {
+          localMap.delete(dummies[i].id);
+          await idbDelete('contis', dummies[i].id);
+          deduplicated = true;
+        }
+      }
+    }
 
     state.contis = Array.from(localMap.values());
     state.contis.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -318,6 +376,11 @@ export async function syncContisIndexFromDrive() {
     // 로컬 DB 갱신
     for (const c of state.contis) {
       await idbPut('contis', c);
+    }
+
+    // 중복 정리가 발생한 경우 드라이브 인덱스도 클린업 반영
+    if (deduplicated && hasDriveAuth()) {
+      syncContisIndexToDrive(state.contis, false).catch(() => {});
     }
 
     showSyncToast('콘티 목록 동기화 완료', 'success');
@@ -341,7 +404,8 @@ export async function syncContisIndexToDrive(contisList, showToast = true) {
       authorEmail: c.authorEmail || 'leader@continote.com',
       authorName: c.authorName || '인도자',
       sharedWith: c.sharedWith || [],
-      songCount: (c.songs && c.songs.length) || c.songCount || 0,
+      sessions: c.sessions || [],
+      songCount: getContiSongCount(c),
       createdAt: c.createdAt || Date.now(),
       updatedAt: c.updatedAt || Date.now()
     }));
@@ -359,12 +423,16 @@ export async function syncContisIndexToDrive(contisList, showToast = true) {
 export async function syncContiDetailFromDrive(contiId, force = false) {
   if (!hasDriveAuth() || !contiId) return null;
 
-  const conti = state.contis.find(c => c.id === contiId);
+  let conti = state.contis.find(c => c.id === contiId);
+  if (!conti) {
+    conti = await idbGet('contis', contiId);
+  }
 
   try {
     showSyncToast('악보 데이터 동기화 중...', 'loading');
     const fileName = `conti_${contiId}.json`;
-    const detailFile = await findFileInAppFolder(fileName);
+    // 파일 메타데이터(수정시각 등)는 최신 상태를 실시간 확인하기 위해 useCache: false 사용
+    const detailFile = await findFileInAppFolder(fileName, false);
 
     if (!detailFile) {
       // 드라이브에 아직 상세 파일이 없으면 (로컬 생성 직후 등) 현재 로컬 데이터를 업로드
@@ -377,11 +445,14 @@ export async function syncContiDetailFromDrive(contiId, force = false) {
 
     // 드라이브 파일의 modifiedTime 및 로컬 updatedAt 검사
     const driveModified = detailFile.modifiedTime ? new Date(detailFile.modifiedTime).getTime() : 0;
-    const localUpdated = (conti && conti.updatedAt) ? conti.updatedAt : 0;
+    const localUpdated = (conti && conti.updatedAt)
+      ? (typeof conti.updatedAt === 'number' ? conti.updatedAt : new Date(conti.updatedAt).getTime() || 0)
+      : 0;
+    const needsDetailSync = Boolean(conti && conti._needDetailSync);
 
-    // 드라이브에 더 최신 파일이 있거나, 플래그가 켜져 있거나, 강제 동기화인 경우 무조건 최신 다운로드!
-    const needsSync = force || (conti && conti._needDetailSync) || (driveModified > localUpdated + 1000);
-    if (!needsSync && conti && conti.songs && conti.songs.length > 0) {
+    // 상세 동기화 필요 여부: 강제 동기화, 지연 로딩 플래그, 또는 드라이브가 더 최신인 경우
+    const needsSync = force || needsDetailSync || (driveModified > localUpdated);
+    if (!needsSync && conti && Array.isArray(conti.songs) && conti.songs.length > 0) {
       showSyncToast('악보 동기화 완료', 'success');
       return conti;
     }
@@ -394,7 +465,12 @@ export async function syncContiDetailFromDrive(contiId, force = false) {
       conti.title = detailData.title || conti.title;
       conti.date = detailData.date || conti.date;
       conti.memo = detailData.memo ?? conti.memo;
-      conti.updatedAt = detailData.updatedAt || driveModified || Date.now();
+      const remoteDataUpdated = detailData.updatedAt
+        ? (typeof detailData.updatedAt === 'number' ? detailData.updatedAt : new Date(detailData.updatedAt).getTime() || 0)
+        : driveModified;
+      conti.updatedAt = remoteDataUpdated || Date.now();
+      conti.songCount = conti.songs.length;
+      if (Array.isArray(detailData.sessions)) conti.sessions = detailData.sessions;
       conti._needDetailSync = false;
 
       // IndexedDB에 콘티 및 곡 저장
@@ -403,14 +479,29 @@ export async function syncContiDetailFromDrive(contiId, force = false) {
         await idbPut('songs', s);
       }
 
-      // 스티커 및 메모 데이터 최신 동기화 (기기간 100% 일치)
-      if (detailData.stickersBySong) {
+      // [스티커 2중 무손실 복원 안전망]
+      // 1순위: detailData.stickersBySong 맵에서 스티커 복원
+      if (detailData.stickersBySong && typeof detailData.stickersBySong === 'object') {
         for (const [sId, stList] of Object.entries(detailData.stickersBySong)) {
           const items = Array.isArray(stList) ? stList : (stList?.items || stList?.list || []);
           state.stickersBySong[sId] = items;
           await idbPut('stickers', { songId: sId, items, list: items });
         }
       }
+
+      // 2순위: 각 곡의 s.stickers에 저장된 스티커가 있다면 누락 방지 자동 복원 (Fallback)
+      if (Array.isArray(conti.songs)) {
+        for (const s of conti.songs) {
+          if (Array.isArray(s.stickers) && s.stickers.length > 0) {
+            const cur = state.stickersBySong[s.id];
+            if (!cur || !cur.length) {
+              state.stickersBySong[s.id] = s.stickers;
+              await idbPut('stickers', { songId: s.id, items: s.stickers, list: s.stickers });
+            }
+          }
+        }
+      }
+
       if (detailData.notesBySong) {
         for (const [sId, nData] of Object.entries(detailData.notesBySong)) {
           await idbPut('notes', { songId: sId, drawing: nData });
@@ -418,6 +509,11 @@ export async function syncContiDetailFromDrive(contiId, force = false) {
       }
       if (state.currentContiId === contiId) {
         state.songs = conti.songs;
+      }
+
+      // 뷰어가 열려있다면 화면의 스티커 레이어 즉각 리프레시 이벤트 발송
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('continote:stickers-synced', { detail: { contiId } }));
       }
     }
 
@@ -485,6 +581,29 @@ export async function cleanSongForDrive(s) {
     finalImg = await compressImageIfNeeded(finalImg);
     s.image = finalImg; // 로컬 메모리/IDB도 동시 경량화
   }
+
+  // [스티커 3단계 안전 수집]: 메모리 캐시 -> IndexedDB -> 곡 자체 stickers 필드
+  let songStickers = (state.stickersBySong && Array.isArray(state.stickersBySong[s.id]) && state.stickersBySong[s.id].length > 0)
+    ? state.stickersBySong[s.id]
+    : null;
+
+  if (!songStickers) {
+    const idbStickers = await loadStickers(s.id);
+    if (Array.isArray(idbStickers) && idbStickers.length > 0) {
+      songStickers = idbStickers;
+    }
+  }
+
+  if (!songStickers && Array.isArray(s.stickers) && s.stickers.length > 0) {
+    songStickers = s.stickers;
+    if (state.stickersBySong) {
+      state.stickersBySong[s.id] = songStickers;
+      await saveStickers(s.id);
+    }
+  }
+
+  songStickers = songStickers || [];
+
   return {
     id: s.id,
     name: s.name,
@@ -494,6 +613,7 @@ export async function cleanSongForDrive(s) {
     themes: s.themes || [],
     order: s.order || 0,
     songform: s.songform || [],
+    stickers: songStickers,
     image: finalImg,
     isShared: Boolean(s.isShared || s.shared),
     sharedWith: s.sharedWith || [],
@@ -512,6 +632,15 @@ export function debounceSyncContiDetail(contiId, delay = 1000) {
   clearTimeout(detailSyncTimer);
   detailSyncTimer = setTimeout(() => {
     syncContiDetailToDrive(contiId, false);
+  }, delay);
+}
+
+let librarySyncTimer = null;
+export function debounceSyncLibraryToDrive(delay = 1000) {
+  if (!hasDriveAuth()) return;
+  clearTimeout(librarySyncTimer);
+  librarySyncTimer = setTimeout(() => {
+    syncLibraryToDrive(state.allSongs, false);
   }, delay);
 }
 
@@ -540,14 +669,11 @@ export async function syncContiDetailToDrive(contiId, showToast = true) {
     // 1. 대용량 이미지 병렬 초경량 압축 + 불필요한 원본(original) 고화질 필드 완전 제외로 용량 95% 절감!
     const cleanedSongs = (await Promise.all(songs.map(s => cleanSongForDrive(s)))).filter(Boolean);
 
-    // 2. 병렬로 스티커 데이터 취합 (기존 순차 루프 대비 수십 배 고속 처리)
+    // 2. 스티커 데이터 취합 (cleanedSongs의 정제된 스티커와 100% 일치 동기화)
     const stickersBySong = { ...(state.stickersBySong || {}) };
-    await Promise.all(songs.map(async (s) => {
-      if (!stickersBySong[s.id] || !stickersBySong[s.id].length) {
-        const rec = await idbGet('stickers', s.id);
-        if (rec) stickersBySong[s.id] = rec.items || rec.list || [];
-      }
-    }));
+    cleanedSongs.forEach(cs => {
+      stickersBySong[cs.id] = cs.stickers || [];
+    });
 
     const detailData = {
       id: conti.id,
@@ -557,12 +683,14 @@ export async function syncContiDetailToDrive(contiId, showToast = true) {
       authorEmail: conti.authorEmail || 'leader@continote.com',
       authorName: conti.authorName || '인도자',
       sharedWith: conti.sharedWith || [],
+      sessions: conti.sessions || [],
       songs: cleanedSongs,
       stickersBySong: stickersBySong,
       updatedAt: Date.now()
     };
 
     conti.songs = cleanedSongs;
+    conti.songCount = cleanedSongs.length;
     conti.updatedAt = detailData.updatedAt;
     conti._needDetailSync = false;
     await idbPut('contis', conti);
@@ -577,6 +705,26 @@ export async function syncContiDetailToDrive(contiId, showToast = true) {
   } catch (err) {
     console.warn('콘티 상세 Drive 업로드 실패:', err);
     if (showToast) showSyncToast('악보 백업 실패: ' + (err.message || ''), 'error');
+  }
+}
+
+// Google Drive에서 콘티 상세 파일(conti_{id}.json) 영구 삭제 (중복 파일 모두 일괄 정리)
+export async function deleteContiFileFromDrive(contiId) {
+  if (!hasDriveAuth() || !contiId) return;
+  try {
+    const fileName = `conti_${contiId}.json`;
+    const folderId = await getOrCreateContinoteFolder();
+    const query = encodeURIComponent(`name = '${fileName}' and '${folderId}' in parents and trashed = false`);
+    const res = await driveApi(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`);
+    const data = await res.json();
+    if (data.files && data.files.length > 0) {
+      for (const f of data.files) {
+        await driveApi(`https://www.googleapis.com/drive/v3/files/${f.id}`, { method: 'DELETE' });
+      }
+    }
+    driveFileIdCache.delete(fileName);
+  } catch (err) {
+    console.warn(`Drive 콘티 파일(conti_${contiId}.json) 삭제 실패:`, err);
   }
 }
 
@@ -633,6 +781,10 @@ export async function syncLibraryFromDrive() {
         // 로컬에 없는 신규 곡 추가
         localMap.set(remoteSong.id, remoteSong);
         await idbPut('library', remoteSong);
+        if (Array.isArray(remoteSong.stickers)) {
+          state.stickersBySong[remoteSong.id] = remoteSong.stickers;
+          await saveStickers(remoteSong.id);
+        }
       } else {
         // 로컬에 이미 존재하는 곡: 원격이 최신이거나 공유 상태(isShared)가 다르면 최신 내용으로 완벽 동기화!
         const remoteUpdated = remoteSong.updatedAt || 0;
@@ -653,12 +805,26 @@ export async function syncLibraryFromDrive() {
           localSong.updatedAt = Math.max(remoteUpdated, localUpdated);
           if (remoteSong.image) localSong.image = remoteSong.image;
           await idbPut('library', localSong);
+
+          if (Array.isArray(remoteSong.stickers)) {
+            const cur = state.stickersBySong[remoteSong.id];
+            if (!cur || !cur.length || remoteUpdated >= localUpdated) {
+              state.stickersBySong[remoteSong.id] = remoteSong.stickers;
+              await saveStickers(remoteSong.id);
+            }
+          }
         }
       }
     }
 
     state.allSongs = Array.from(localMap.values());
     state.allSongs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('continote:stickers-synced'));
+      window.dispatchEvent(new CustomEvent('continote:library-synced'));
+    }
+
     return state.allSongs;
   } catch (err) {
     console.warn('라이브러리 Drive 동기화 실패:', err);
@@ -670,45 +836,147 @@ export async function syncLibraryToDrive(libraryList = null, showToast = true) {
   if (!hasDriveAuth()) return;
   try {
     if (showToast) showSyncToast('악보 보관함 백업 중...', 'loading');
-    let rawList = libraryList || state.allSongs || [];
-    if (!rawList.length) {
-      rawList = await idbGetAll('library');
-    }
-    if (rawList.length > 0) {
-      // 대용량 원본(original) 제거 및 이미지 압축 적용 (40MB -> 600KB, 98% 용량 감축!)
-      const cleanedList = (await Promise.all(rawList.map(s => cleanSongForDrive(s)))).filter(Boolean);
-      await uploadJsonFile(LIBRARY_FILE_NAME, cleanedList);
-      if (showToast) showSyncToast('악보 보관함 백업 완료', 'success');
-    }
+    let rawList = Array.isArray(libraryList) ? libraryList : (Array.isArray(state.allSongs) ? state.allSongs : await idbGetAll('library'));
+    // 대용량 원본(original) 제거 및 이미지 압축 적용 (40MB -> 600KB, 98% 용량 감축!)
+    const cleanedList = (await Promise.all(rawList.map(s => cleanSongForDrive(s)))).filter(Boolean);
+    await uploadJsonFile(LIBRARY_FILE_NAME, cleanedList);
+    if (showToast) showSyncToast('악보 보관함 백업 완료', 'success');
   } catch (err) {
     console.warn('악보 보관함 Drive 업로드 실패:', err);
     if (showToast) showSyncToast('보관함 백업 실패: ' + (err.message || ''), 'error');
   }
 }
 
-// 전체 데이터 원클릭 동기화 (콘티 목록 + 악보 상세 + 마스터 보관함)
+// 전체 데이터 원클릭 동기화 (Google Drive 최신 데이터 강제 가져오기 및 동기화)
 export async function runFullDriveSync(showToast = true) {
   if (!hasDriveAuth()) return;
   try {
     if (showToast) showSyncToast('클라우드 전체 동기화 중...', 'loading');
-    // 1. 콘티 목록 인덱스 백업
-    await syncContisIndexToDrive(state.contis, false);
-    // 2. 콘티별 상세 악보 백업
+    driveFileIdCache.clear();
+
+    // 1. Google Drive로부터 최신 콘티 목록(contis_index.json) 강제 다운로드 & 로컬 병합/더미 정리
+    await syncContisIndexFromDrive(true);
+
+    // 2. Google Drive로부터 마스터 악보 보관함(library.json) 최신 다운로드
+    await syncLibraryFromDrive();
+
+    // 3. 모든 콘티의 상세 악보 데이터(conti_{id}.json) 최신 동기화
     const localContis = await idbGetAll('contis');
     for (const c of localContis) {
-      const songs = (state.currentContiId === c.id && state.songs && state.songs.length) ? state.songs : (c.songs || []);
-      if (songs.length > 0) {
-        await syncContiDetailToDrive(c.id, false);
-      }
+      await syncContiDetailFromDrive(c.id, true);
     }
-    // 3. 마스터 악보 보관함 백업 (40MB -> 600KB로 고속 백업)
+
+    // 4. 로컬에 아직 드라이브로 안 올라간 신규 보관함 악보가 있다면 백업
     const localLib = (state.allSongs && state.allSongs.length) ? state.allSongs : (await idbGetAll('library'));
     if (localLib && localLib.length > 0) {
       await syncLibraryToDrive(localLib, false);
     }
-    if (showToast) showSyncToast('Google Drive 전체 동기화 완료!', 'success');
+
+    if (showToast) showSyncToast('Google Drive 최신 동기화 완료!', 'success');
   } catch (err) {
     console.warn('전체 Drive 동기화 실패:', err);
     if (showToast) showSyncToast('동기화 오류: ' + (err.message || ''), 'error');
   }
 }
+
+/* ==================================================
+   [팀원 DB] @changdae.cc 찬양팀원 풀 누적 동기화 (team_members.json)
+   ================================================== */
+export function loadTeamMembersFromCache() {
+  try {
+    const raw = localStorage.getItem(MEMBERS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        state.teamMembers = parsed;
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('팀원 로컬 캐시 로드 실패:', e);
+  }
+  return [];
+}
+
+export function saveTeamMembersToCache(members) {
+  try {
+    state.teamMembers = members;
+    localStorage.setItem(MEMBERS_STORAGE_KEY, JSON.stringify(members));
+  } catch (e) {
+    console.warn('팀원 로컬 캐시 저장 실패:', e);
+  }
+}
+
+export async function syncTeamMembersFromDrive() {
+  loadTeamMembersFromCache();
+  if (!hasDriveAuth()) return state.teamMembers;
+
+  try {
+    const file = await findFileInAppFolder(MEMBERS_FILE_NAME, true);
+    if (!file) {
+      if (state.teamMembers && state.teamMembers.length > 0) {
+        await saveTeamMembersToDrive(state.teamMembers);
+      }
+      return state.teamMembers;
+    }
+    const remoteMembers = await downloadJsonFile(file.id);
+    if (Array.isArray(remoteMembers)) {
+      const map = new Map();
+      (state.teamMembers || []).forEach(m => {
+        if (m && m.email) map.set(m.email.toLowerCase(), m);
+      });
+      remoteMembers.forEach(m => {
+        if (m && m.email) map.set(m.email.toLowerCase(), m);
+      });
+      const merged = Array.from(map.values()).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+      saveTeamMembersToCache(merged);
+      return merged;
+    }
+  } catch (err) {
+    console.warn('팀원 목록 Drive 동기화 실패:', err);
+  }
+  return state.teamMembers;
+}
+
+export async function saveTeamMembersToDrive(members) {
+  saveTeamMembersToCache(members);
+  if (!hasDriveAuth()) return;
+  try {
+    await uploadJsonFile(MEMBERS_FILE_NAME, members);
+  } catch (err) {
+    console.warn('팀원 목록 Drive 업로드 실패:', err);
+  }
+}
+
+export async function upsertTeamMember(user) {
+  if (!user || !user.email) return;
+  loadTeamMembersFromCache();
+  const email = user.email.trim().toLowerCase();
+  const rawName = (user.name || '').trim();
+  const name = (rawName && rawName !== '찬양인도자') ? rawName : email.split('@')[0];
+  const picture = user.picture || '';
+
+  const members = [...(state.teamMembers || [])];
+  const existingIdx = members.findIndex(m => m.email.toLowerCase() === email);
+  const memberObj = {
+    name,
+    email,
+    picture,
+    lastActive: Date.now()
+  };
+
+  if (existingIdx >= 0) {
+    members[existingIdx] = { ...members[existingIdx], ...memberObj };
+  } else {
+    members.push(memberObj);
+  }
+
+  members.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+  saveTeamMembersToCache(members);
+
+  if (hasDriveAuth()) {
+    saveTeamMembersToDrive(members).catch(e => console.warn('Drive 팀원 비동기 업로드 대기:', e));
+  }
+  return members;
+}
+
