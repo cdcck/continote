@@ -181,6 +181,9 @@ export async function saveCurrentConti() {
     current.updatedAt = Date.now();
     current._needDetailSync = false;
     await idbPut('contis', current);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('continote:conti-updated', { detail: { contiId: current.id } }));
+    }
   }
 }
 

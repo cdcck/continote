@@ -532,7 +532,7 @@
           <button id="openOrgAdminBtn"
             class="w-full flex items-center justify-center gap-2 py-3 rounded-xl border font-semibold text-sm transition-all active:scale-95 shadow-sm"
             style="border-color:var(--border);background:var(--surface-2)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4.5 h-4.5">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-4 h-4 shrink-0" style="width:18px;height:18px">
               <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
               <circle cx="9" cy="7" r="4"/>
               <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
@@ -1300,26 +1300,57 @@
         </button>
       </div>
 
-      <!-- 찬양팀원 Google 이메일 추가 -->
-      <div>
-        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">찬양팀원 Google 계정 이메일</label>
-        <div class="flex gap-2">
-          <input id="shareEmailInput" type="email" placeholder="예: worship@gmail.com"
-            class="flex-1 px-3 py-2 rounded-xl border bg-transparent text-sm outline-none focus:ring-2"
+      <!-- 우리 교회 찬양팀원 목록에서 선택하기 -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <label class="block text-xs font-semibold" style="color:var(--text-dim)">찬양팀원 선택</label>
+          <span id="shareOrgMemberCount" class="text-[11px] font-semibold" style="color:var(--accent)">0명</span>
+        </div>
+        
+        <!-- 팀원 검색창 -->
+        <div class="relative">
+          <input id="shareMemberSearchInput" type="text" placeholder="이름 또는 이메일 검색..."
+            class="w-full pl-8 pr-3 py-1.5 rounded-xl border bg-transparent text-xs outline-none focus:ring-2"
             style="border-color:var(--border)" />
-          <button id="addShareEmailBtn" class="px-3 py-2 rounded-xl text-white font-semibold text-xs shrink-0 shadow-sm"
-            style="background:var(--accent)">
-            공유 추가
-          </button>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            class="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-neutral-400">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="m21 21-4.3-4.3"/>
+          </svg>
+        </div>
+
+        <!-- 팀원 선택 리스트 -->
+        <div id="shareOrgMemberList"
+          class="space-y-1 max-h-36 overflow-y-auto p-1.5 rounded-xl border"
+          style="border-color:var(--border);background:var(--surface-2)">
+          <div class="text-center py-4 text-xs" style="color:var(--text-dim)">팀원 목록을 불러오는 중...</div>
         </div>
       </div>
 
-      <!-- 현재 공유된 계정 목록 -->
+      <!-- 현재 공유된 팀원 목록 -->
       <div>
-        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">공유된 찬양팀원 목록</label>
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">현재 공유된 멤버</label>
         <div id="shareEmailList"
-          class="flex flex-wrap gap-1.5 p-2 rounded-xl border min-h-[44px] max-h-28 overflow-y-auto"
+          class="flex flex-wrap gap-1.5 p-2 rounded-xl border min-h-[44px] max-h-24 overflow-y-auto"
           style="border-color:var(--border);background:var(--surface-2)"></div>
+      </div>
+
+      <!-- 직접 이메일 추가 (외부 게스트/타교회용) -->
+      <div>
+        <details class="text-xs">
+          <summary class="cursor-pointer font-semibold select-none mb-1.5" style="color:var(--text-dim)">
+            + 직접 이메일 입력하여 추가 (외부 게스트)
+          </summary>
+          <div class="flex gap-2 pt-1">
+            <input id="shareEmailInput" type="email" placeholder="예: guest@gmail.com"
+              class="flex-1 px-3 py-1.5 rounded-xl border bg-transparent text-xs outline-none focus:ring-2"
+              style="border-color:var(--border)" />
+            <button id="addShareEmailBtn" class="px-3 py-1.5 rounded-xl text-white font-semibold text-xs shrink-0 shadow-sm"
+              style="background:var(--accent)">
+              추가
+            </button>
+          </div>
+        </details>
       </div>
 
       <!-- 원클릭 링크 복사 -->
@@ -1425,7 +1456,10 @@
       <!-- 탭 1: 기존 교회 가입 신청 패널 -->
       <div id="orgJoinPanel" class="space-y-3">
         <div>
-          <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">가입할 교회 선택 *</label>
+          <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">가입할 교회 검색 및 선택 *</label>
+          <input id="orgSearchInput" type="text" placeholder="교회 이름 검색..."
+            class="w-full px-3.5 py-2 mb-2 rounded-xl border text-xs outline-none focus:ring-2"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" />
           <select id="orgJoinSelect"
             class="w-full px-3.5 py-2.5 rounded-xl border text-sm font-semibold outline-none focus:ring-2"
             style="border-color:var(--border);background:var(--surface-2);color:var(--text)">
@@ -1578,11 +1612,14 @@
           <select id="songMetaTimeSigSelect"
             class="w-full px-2.5 py-2 rounded-xl border text-xs sm:text-sm font-semibold outline-none focus:ring-2"
             style="border-color:var(--border);background:var(--surface-2);color:var(--text)">
-            <option value="4/4">4/4</option>
+            <option value="4/4" selected>4/4</option>
             <option value="3/4">3/4</option>
             <option value="6/8">6/8</option>
+            <option value="9/8">9/8</option>
+            <option value="12/8">12/8</option>
             <option value="2/4">2/4</option>
-            <option value="기타">기타</option>
+            <option value="2/2">2/2</option>
+            <option value="6/4">6/4</option>
           </select>
         </div>
         <div>

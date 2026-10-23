@@ -38,7 +38,7 @@ import {
   addSongMaster, saveSongVersion, getOrganizationSongs, getSongVersions,
   loginWithGoogle, logoutUser, subscribeAuth, getUserProfile,
   getOrganizationList, createOrganization, requestJoinOrganization,
-  getPendingUsers, approveUser
+  getPendingUsers, approveUser, getApprovedMembers, saveContiSet, getOrganizationContis
 } from './firebase.js';
 
 // DOM Elements Cache
@@ -75,7 +75,7 @@ const DOM_IDS = [
   'cropModal', 'cropAutoTabBtn', 'cropManualTabBtn', 'cropStage', 'cropDisplayImg', 'cropBox', 'cropHintText', 'cropCancelBtn', 'cropApplyBtn',
   'ratioModal', 'ratioResetBtn', 'ratioStage', 'ratioCanvas', 'ratioWidthVal', 'ratioHeightVal', 'ratioAspectVal', 'ratioPrevBtn', 'ratioNextBtn',
   'duplicateSongModal', 'dupSongMatchedTitle', 'dupSongSimilarityBadge', 'dupSongAddVersionBtn', 'dupSongCreateNewBtn',
-  'orgOnboardingModal', 'orgTabJoinBtn', 'orgTabCreateBtn', 'orgJoinPanel', 'orgCreatePanel', 'orgJoinSelect', 'orgCreateNameInput', 'orgSubmitJoinBtn', 'orgSubmitCreateBtn',
+  'orgOnboardingModal', 'orgTabJoinBtn', 'orgTabCreateBtn', 'orgJoinPanel', 'orgCreatePanel', 'orgSearchInput', 'orgJoinSelect', 'orgCreateNameInput', 'orgSubmitJoinBtn', 'orgSubmitCreateBtn',
   'pendingApprovalScreen', 'pendingOrgNameDisplay', 'pendingRefreshBtn', 'pendingLogoutBtn',
   'orgAdminSection', 'orgAdminSectionDivider', 'orgAdminPendingBadge', 'openOrgAdminBtn', 'orgAdminModal', 'orgPendingUsersList',
   'songformOrderModal', 'songformOrderSongTitle', 'songformStepInput', 'songformMultiplyBtn', 'songformStepNextBtn', 'songformPickerChips', 'songformClearFlowBtn', 'songformFlowList', 'songformFlowEmptyHint', 'songformOrderApplyBtn',
@@ -85,7 +85,7 @@ const DOM_IDS = [
   'themeManageList', 'newThemeInput', 'addThemeBtn',
   'textMemoModal', 'textMemoSongSelectBar', 'textMemoSongLeftBtn', 'textMemoSongRightBtn', 'textMemoInput', 'textMemoAddBtn',
   'chordStickerModal', 'chordStickerInput', 'chordStickerBackspaceBtn', 'chordStickerClearBtn', 'chordStickerPreview', 'chordStickerAddBtn',
-  'shareModal', 'shareContiTitle', 'shareEmailInput', 'addShareEmailBtn', 'shareEmailList', 'copyShareLinkBtn',
+  'shareModal', 'shareContiTitle', 'shareMemberSearchInput', 'shareOrgMemberCount', 'shareOrgMemberList', 'shareEmailInput', 'addShareEmailBtn', 'shareEmailList', 'copyShareLinkBtn',
   'songMetaModal', 'songMetaModalTitle', 'songMetaNameInput', 'songMetaKeySelect', 'songMetaTimeSigSelect', 'songMetaTempoInput', 'songMetaBpmBtn', 'songMetaThemesContainer', 'songMetaSaveBtn',
   'songMetaLibrarySyncRow', 'songMetaAddToLibraryCheckbox', 'songMetaAddToLibraryLabel', 'songMetaAddToLibraryDesc',
   'addToContiModal', 'addToContiSongTitle', 'addToContiSearchInput', 'addToContiCountBadge', 'addToContiListContainer', 'confirmAddToContiBtn',
@@ -163,16 +163,63 @@ let metronomeTimer = null;
 let metronomeActiveBtn = null;
 let metronomeBpm = 0;
 let metronomeBeatIndex = 0;
-let metronomeBeatsPerMeasure = 4;
+let metronomeTimeSig = '4/4';
+let metronomePattern = [];
+
+/**
+ * 박자 정보 분석 및 8분음표 쪼개기(Subdivision) 패턴 생성
+ * @param {string|number} timeSig 박자 문자열 (예: '6/8', '9/8', '12/8', '4/4')
+ * @param {number} inputBpm 입력 템포
+ * @returns {{ effectiveBpm: number, totalClicks: number, pattern: string[], isCompound: boolean }}
+ */
+function analyzeMetronomeMeter(timeSig, inputBpm) {
+  const str = String(timeSig || '4/4').trim();
+  const match = str.match(/^(\d+)(?:\/(\d+))?/);
+  const numerator = match ? parseInt(match[1], 10) : 4;
+  const denominator = (match && match[2]) ? parseInt(match[2], 10) : 4;
+
+  let effectiveBpm = inputBpm;
+  let totalClicks = numerator;
+  const pattern = [];
+  let isCompound = false;
+
+  // 복합 박자: 6/8, 9/8, 12/8 등 분모가 8이고 분자가 3의 배수인 경우
+  if (denominator === 8 && (numerator === 6 || numerator === 9 || numerator === 12)) {
+    isCompound = true;
+    totalClicks = numerator;
+
+    // 점4분음표 BPM(보통 20~110)으로 입력된 경우 8분음표 쪼갬 템포(x3)로 자동 변환
+    if (inputBpm <= 110) {
+      effectiveBpm = inputBpm * 3;
+    }
+
+    // 복합 박자 클릭 패턴:
+    // 6/8:  [0: 강, 1,2: 약, 3: 중강, 4,5: 약]
+    // 9/8:  [0: 강, 1,2: 약, 3: 중강, 4,5: 약, 6: 중강, 7,8: 약]
+    // 12/8: [0: 강, 1,2: 약, 3: 중강, 4,5: 약, 6: 중강, 7,8: 약, 9: 중강, 10,11: 약]
+    for (let i = 0; i < totalClicks; i++) {
+      if (i === 0) {
+        pattern.push('downbeat');
+      } else if (i % 3 === 0) {
+        pattern.push('midbeat');
+      } else {
+        pattern.push('upbeat');
+      }
+    }
+  } else {
+    // 일반 박자 (4/4, 3/4, 2/4, 2/2, 6/4 등)
+    totalClicks = Math.min(32, Math.max(1, numerator));
+    for (let i = 0; i < totalClicks; i++) {
+      pattern.push(i === 0 ? 'downbeat' : 'upbeat');
+    }
+  }
+
+  return { effectiveBpm, totalClicks, pattern, isCompound };
+}
 
 function getBeatsPerMeasure(timeSig) {
-  if (!timeSig) return 4;
-  const match = String(timeSig).trim().match(/^(\d+)/);
-  if (match) {
-    const num = parseInt(match[1], 10);
-    if (num > 0 && num <= 32) return num;
-  }
-  return 4;
+  const { totalClicks } = analyzeMetronomeMeter(timeSig, 60);
+  return totalClicks;
 }
 
 function getAudioContext() {
@@ -188,7 +235,10 @@ function getAudioContext() {
   return audioCtx;
 }
 
-function playClickSound(isFirstBeat = false) {
+/**
+ * 3단계 클릭 사운드 생성 (최강박 / 묶음시작 중강박 / 서브 약박)
+ */
+function playClickSound(beatType = 'upbeat') {
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
@@ -196,79 +246,89 @@ function playClickSound(isFirstBeat = false) {
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-
     osc.type = 'sine';
 
-    if (isFirstBeat) {
-      // 마디 첫 클릭 (강박): 고음 및 선명하고 또렷한 하이 피치 틱 사운드 (1600Hz -> 600Hz)
+    if (beatType === 'downbeat') {
+      // 마디 첫 박 (최강박): 고음 선명하고 또렷한 하이 피치 틱 사운드 (1600Hz -> 600Hz)
       osc.frequency.setValueAtTime(1600, now);
       osc.frequency.exponentialRampToValueAtTime(600, now + 0.04);
-
       gain.gain.setValueAtTime(0.95, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
-
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start(now);
       osc.stop(now + 0.05);
-    } else {
-      // 마디 일반 클릭 (약박): 차분하고 안정적인 중저음 우드블록 틱 사운드 (900Hz -> 300Hz)
-      osc.frequency.setValueAtTime(900, now);
-      osc.frequency.exponentialRampToValueAtTime(300, now + 0.03);
-
-      gain.gain.setValueAtTime(0.65, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
-
+    } else if (beatType === 'midbeat') {
+      // 복합 박자 묶음 시작박 (중강박): 1200Hz -> 450Hz
+      osc.frequency.setValueAtTime(1200, now);
+      osc.frequency.exponentialRampToValueAtTime(450, now + 0.035);
+      gain.gain.setValueAtTime(0.8, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start(now);
-      osc.stop(now + 0.04);
+      osc.stop(now + 0.045);
+    } else {
+      // 쪼개지는 일반 서브 약박: 가벼운 우드블록 틱 사운드 (750Hz -> 250Hz)
+      osc.frequency.setValueAtTime(750, now);
+      osc.frequency.exponentialRampToValueAtTime(250, now + 0.025);
+      gain.gain.setValueAtTime(0.5, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.035);
     }
   } catch (err) {
     console.warn('Metronome audio error:', err);
   }
 }
 
-function triggerBeatVisual(btn, isFirstBeat = false) {
+function triggerBeatVisual(btn, beatType = 'upbeat') {
   if (!btn) return;
   btn.classList.remove('metronome-tick', 'metronome-tick-downbeat');
   void btn.offsetWidth; // reflow trigger
-  if (isFirstBeat) {
+  if (beatType === 'downbeat') {
     btn.classList.add('metronome-tick-downbeat');
-  } else {
+  } else if (beatType === 'midbeat') {
     btn.classList.add('metronome-tick');
   }
 }
 
-export function startMetronome(bpm, triggerBtn, beatsPerMeasure = 4) {
+export function startMetronome(bpm, triggerBtn, timeSig = '4/4') {
   stopMetronome();
   const tempo = parseInt(bpm, 10);
   if (!tempo || tempo < 20 || tempo > 300 || isNaN(tempo)) return;
 
+  const { effectiveBpm, pattern } = analyzeMetronomeMeter(timeSig, tempo);
+
   metronomeBpm = tempo;
+  metronomeTimeSig = timeSig;
   metronomeActiveBtn = triggerBtn;
-  metronomeBeatsPerMeasure = beatsPerMeasure > 0 ? beatsPerMeasure : 4;
+  metronomePattern = pattern;
   metronomeBeatIndex = 0;
 
   getAudioContext();
-  // 첫 박 (강박) 재생
-  playClickSound(true);
+
+  // 첫 박 (최강박) 재생
+  const firstBeatType = pattern[0] || 'downbeat';
+  playClickSound(firstBeatType);
 
   if (triggerBtn) {
     triggerBtn.classList.add('metronome-playing');
-    triggerBeatVisual(triggerBtn, true);
+    triggerBeatVisual(triggerBtn, firstBeatType);
   }
 
-  metronomeBeatIndex = 1 % metronomeBeatsPerMeasure;
+  metronomeBeatIndex = 1 % pattern.length;
 
-  const intervalMs = (60 / tempo) * 1000;
+  const intervalMs = (60 / effectiveBpm) * 1000;
   metronomeTimer = setInterval(() => {
-    const isFirst = (metronomeBeatIndex === 0);
-    playClickSound(isFirst);
+    const beatType = pattern[metronomeBeatIndex] || 'upbeat';
+    playClickSound(beatType);
     if (triggerBtn) {
-      triggerBeatVisual(triggerBtn, isFirst);
+      triggerBeatVisual(triggerBtn, beatType);
     }
-    metronomeBeatIndex = (metronomeBeatIndex + 1) % metronomeBeatsPerMeasure;
+    metronomeBeatIndex = (metronomeBeatIndex + 1) % pattern.length;
   }, intervalMs);
 }
 
@@ -289,21 +349,22 @@ export function stopMetronome() {
   }
   metronomeBpm = 0;
   metronomeBeatIndex = 0;
+  metronomePattern = [];
 }
 
 export function isMetronomePlaying() {
   return metronomeTimer !== null;
 }
 
-export function toggleMetronome(bpm, triggerBtn, beatsPerMeasure = 4) {
+export function toggleMetronome(bpm, triggerBtn, timeSig = '4/4') {
   if (isMetronomePlaying()) {
     const wasSameBtn = (metronomeActiveBtn === triggerBtn);
     stopMetronome();
     if (!wasSameBtn && bpm) {
-      startMetronome(bpm, triggerBtn, beatsPerMeasure);
+      startMetronome(bpm, triggerBtn, timeSig);
     }
   } else {
-    startMetronome(bpm, triggerBtn, beatsPerMeasure);
+    startMetronome(bpm, triggerBtn, timeSig);
   }
 }
 
@@ -311,17 +372,16 @@ function updateSongMetaBpmBtnState() {
   if (!els.songMetaBpmBtn || !els.songMetaTempoInput) return;
   const tempoVal = parseInt(els.songMetaTempoInput.value.trim(), 10);
   const timeSigVal = els.songMetaTimeSigSelect?.value || '4/4';
-  const beats = getBeatsPerMeasure(timeSigVal);
 
   if (tempoVal && tempoVal >= 20 && tempoVal <= 300) {
     els.songMetaBpmBtn.disabled = false;
     els.songMetaBpmBtn.classList.remove('opacity-40', 'cursor-not-allowed');
     els.songMetaBpmBtn.classList.add('cursor-pointer');
     els.songMetaBpmBtn.style.pointerEvents = 'auto';
-    els.songMetaBpmBtn.title = `템포: ${tempoVal} BPM (${beats}박자, 클릭하여 소리 듣기)`;
+    els.songMetaBpmBtn.title = `템포: ${tempoVal} BPM (${timeSigVal} 박자, 클릭하여 소리 듣기)`;
     // 재생 중 템포 또는 박자가 변경되면 실시간으로 새 설정 반영
-    if (isMetronomePlaying() && metronomeActiveBtn === els.songMetaBpmBtn && (metronomeBpm !== tempoVal || metronomeBeatsPerMeasure !== beats)) {
-      startMetronome(tempoVal, els.songMetaBpmBtn, beats);
+    if (isMetronomePlaying() && metronomeActiveBtn === els.songMetaBpmBtn && (metronomeBpm !== tempoVal || metronomeTimeSig !== timeSigVal)) {
+      startMetronome(tempoVal, els.songMetaBpmBtn, timeSigVal);
     }
   } else {
     if (isMetronomePlaying() && metronomeActiveBtn === els.songMetaBpmBtn) {
@@ -331,7 +391,7 @@ function updateSongMetaBpmBtnState() {
     els.songMetaBpmBtn.classList.add('opacity-40', 'cursor-not-allowed');
     els.songMetaBpmBtn.classList.remove('cursor-pointer');
     els.songMetaBpmBtn.style.pointerEvents = 'none';
-    els.songMetaBpmBtn.title = '템포를 입력하면 소리를 들어볼 수 있습니다';
+    els.songMetaBpmBtn.title = '템포(BPM)를 먼저 입력해주세요';
   }
 }
 
@@ -592,6 +652,8 @@ async function handleProfileClick() {
   applyUIState();
 }
 
+let cachedOrgList = [];
+
 /**
  * 교회(조직) 온보딩 모달 열기
  */
@@ -599,21 +661,40 @@ async function openOrgOnboardingModal(user) {
   currentAuthUser = user;
   if (!els.orgOnboardingModal) return;
 
+  if (els.orgSearchInput) els.orgSearchInput.value = '';
+
+  const renderOrgOptions = (query = '') => {
+    if (!els.orgJoinSelect) return;
+    const q = query.toLowerCase().trim();
+    const filtered = cachedOrgList.filter(o => !q || (o.name || '').toLowerCase().includes(q));
+
+    if (filtered.length === 0) {
+      els.orgJoinSelect.innerHTML = `<option value="">${q ? '검색된 교회가 없습니다' : '등록된 교회가 없습니다 (새 교회를 만들어주세요)'}</option>`;
+      return;
+    }
+
+    els.orgJoinSelect.innerHTML = '<option value="">가입할 교회를 선택하세요</option>' +
+      filtered.map(o => `<option value="${escapeHtml(o.id)}" data-name="${escapeHtml(o.name)}">${escapeHtml(o.name)}</option>`).join('');
+  };
+
   // 기존 교회 목록 로드
   if (els.orgJoinSelect) {
     els.orgJoinSelect.innerHTML = '<option value="">불러오는 중...</option>';
     try {
-      const orgs = await getOrganizationList();
-      if (orgs.length === 0) {
-        els.orgJoinSelect.innerHTML = '<option value="">등록된 교회가 없습니다 (새 교회를 만들어주세요)</option>';
-      } else {
-        els.orgJoinSelect.innerHTML = '<option value="">가입할 교회를 선택하세요</option>' +
-          orgs.map(o => `<option value="${escapeHtml(o.id)}" data-name="${escapeHtml(o.name)}">${escapeHtml(o.name)}</option>`).join('');
-      }
+      cachedOrgList = await getOrganizationList();
+      renderOrgOptions();
     } catch (err) {
       console.warn('교회 목록 로드 실패:', err);
       els.orgJoinSelect.innerHTML = '<option value="">교회 목록을 불러오지 못했습니다</option>';
     }
+  }
+
+  // 검색 인풋 이벤트 연결 (1회성 안전 연결)
+  if (els.orgSearchInput && !els.orgSearchInput.dataset.bound) {
+    els.orgSearchInput.dataset.bound = 'true';
+    els.orgSearchInput.addEventListener('input', (e) => {
+      renderOrgOptions(e.target.value);
+    });
   }
 
   // 기본 탭: 가입 신청
@@ -779,6 +860,12 @@ function initFirebaseAuth() {
           if (els.orgAdminSectionDivider) hide(els.orgAdminSectionDivider);
         }
 
+        // Firestore 클라우드 콘티 및 악보 라이브러리 실시간 동기화
+        await Promise.all([
+          syncCloudContis(profile.orgId, user.email),
+          syncCloudSongs(profile.orgId)
+        ]);
+
         renderContiListView();
         applyUIState();
       } catch (err) {
@@ -796,6 +883,118 @@ function initFirebaseAuth() {
       applyUIState();
     }
   });
+}
+
+/**
+ * Firestore 클라우드 콘티 목록을 로컬과 병합
+ */
+export async function syncCloudContis(orgId, userEmail = '') {
+  if (!orgId) return;
+  try {
+    const cloudContis = await getOrganizationContis(orgId, userEmail);
+    if (cloudContis && cloudContis.length > 0) {
+      const localContiMap = new Map((state.contis || []).map(c => [c.id, c]));
+      cloudContis.forEach(cc => {
+        const existing = localContiMap.get(cc.id);
+        if (existing) {
+          // 클라우드 최신 정보로 병합
+          existing.title = cc.title || existing.title;
+          existing.date = cc.date || existing.date;
+          existing.memo = cc.memo || existing.memo;
+          existing.sharedWith = Array.isArray(cc.sharedWith) ? cc.sharedWith : (existing.sharedWith || []);
+          existing.orgId = cc.orgId || existing.orgId;
+          if (Array.isArray(cc.items) && cc.items.length > 0) {
+            existing.songs = cc.items;
+          }
+        } else {
+          localContiMap.set(cc.id, {
+            id: cc.id,
+            title: cc.title || '새 콘티',
+            date: cc.date || '',
+            memo: cc.memo || '',
+            authorEmail: cc.leaderEmail || cc.authorEmail || '',
+            authorName: cc.leaderName || '인도자',
+            sharedWith: Array.isArray(cc.sharedWith) ? cc.sharedWith : [],
+            sessions: cc.sessions || [],
+            songs: cc.items || cc.songs || [],
+            orgId: cc.orgId,
+            createdAt: cc.createdAt?.toMillis ? cc.createdAt.toMillis() : Date.now(),
+            updatedAt: cc.updatedAt?.toMillis ? cc.updatedAt.toMillis() : Date.now()
+          });
+        }
+      });
+      state.contis = Array.from(localContiMap.values());
+      state.contis.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      await saveContis();
+    }
+  } catch (err) {
+    console.warn('[Firebase] 콘티 목록 클라우드 동기화 실패:', err);
+  }
+}
+
+/**
+ * 소속 교회의 마스터 악보 목록을 Firestore에서 불러와 로컬 라이브러리와 동기화
+ */
+export async function syncCloudSongs(orgId) {
+  if (!orgId) return;
+  try {
+    const cloudSongs = await getOrganizationSongs(orgId);
+    if (cloudSongs && cloudSongs.length > 0) {
+      const localMap = new Map((state.allSongs || []).map(s => [s.id, s]));
+      for (const cs of cloudSongs) {
+        const existing = localMap.get(cs.id);
+        if (existing) {
+          existing.name = cs.title || existing.name;
+          existing.image = cs.imageData || existing.image;
+          existing.key = cs.initialKey || existing.key;
+          await saveLibrarySong(existing);
+        } else {
+          const newLibSong = {
+            id: cs.id,
+            name: cs.title,
+            image: cs.imageData,
+            original: cs.imageData,
+            key: cs.initialKey || '',
+            pHash: cs.pHash || '',
+            themes: [],
+            order: 0,
+            songform: [],
+            createdAt: cs.createdAt?.toMillis ? cs.createdAt.toMillis() : Date.now()
+          };
+          localMap.set(cs.id, newLibSong);
+          await saveLibrarySong(newLibSong);
+        }
+      }
+      state.allSongs = Array.from(localMap.values());
+      if (state.viewLevel === 'songLibrary') {
+        renderSongLibraryView();
+      }
+    }
+  } catch (err) {
+    console.warn('[Firebase] 악보 라이브러리 클라우드 동기화 실패:', err);
+  }
+}
+
+/**
+ * 단일 콘티를 Firestore 클라우드에 백그라운드 동기화
+ */
+export function syncContiToFirestore(conti) {
+  if (!conti || !state.currentUser?.orgId) return;
+  conti.orgId = state.currentUser.orgId;
+  const authorEmail = (conti.authorEmail || state.currentUser.email || '').toLowerCase().trim();
+  saveContiSet({
+    id: conti.id,
+    orgId: state.currentUser.orgId,
+    leaderUid: state.currentUser.uid || '',
+    leaderName: state.currentUser.name || conti.authorName || '인도자',
+    leaderEmail: authorEmail,
+    authorEmail: authorEmail,
+    title: conti.title,
+    date: conti.date,
+    items: Array.isArray(conti.songs) ? conti.songs : [],
+    memo: conti.memo || '',
+    sharedWith: Array.isArray(conti.sharedWith) ? conti.sharedWith : []
+  }).catch(err => console.warn('[Firebase] 콘티 클라우드 저장 실패:', err));
 }
 
 /* ==================================================
@@ -953,29 +1152,48 @@ export function renderContiListView() {
   if (!els.contiListContainer) return;
   els.contiListContainer.innerHTML = '';
 
-  const isLeader = state.activeMenu === 'leader';
-  const myEmail = state.currentUser?.email || 'leader@continote.com';
+  const isLoggedIn = Boolean(state.currentUser && state.currentUser.orgId && state.currentUser.status === 'approved');
 
-  // 계정별 콘티 필터링
-  let contis = state.contis || [];
-  const isDefaultGuest = myEmail === 'leader@continote.com';
-
-  if (isLeader) {
-    // 인도자 메뉴: 로그인한 계정의 콘티 + 로그인 전 기본 계정으로 로컬에 생성된 콘티도 안전하게 포함
-    contis = contis.filter(c => {
-      const author = c.authorEmail || 'leader@continote.com';
-      return author === myEmail || (!isDefaultGuest && author === 'leader@continote.com');
-    });
-  } else {
-    // 사용자 메뉴: 내가 만들었거나(기본 콘티 포함), 나에게 공유된 콘티 노출
-    contis = contis.filter(c => {
-      const author = c.authorEmail || 'leader@continote.com';
-      const isMine = author === myEmail || (!isDefaultGuest && author === 'leader@continote.com');
-      const isSharedToMe = (Array.isArray(c.sharedWith) && c.sharedWith.includes(myEmail)) ||
-        (Array.isArray(c.sessions) && c.sessions.some(s => s.email && s.email.toLowerCase() === myEmail.toLowerCase()));
-      return isMine || isSharedToMe;
-    });
+  // [보안/격리] 로그인을 안한 상태에서는 콘티 목록이 노출되지 않도록 처리
+  if (!isLoggedIn) {
+    els.contiListContainer.innerHTML = `
+      <div class="p-8 text-center rounded-2xl border flex flex-col items-center justify-center gap-2.5 my-4"
+        style="border-color:var(--border);background:var(--surface)">
+        <div class="w-12 h-12 rounded-full flex items-center justify-center" style="background:var(--surface-2);color:var(--accent)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-6 h-6">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M19 8v6M22 11h-6"/>
+          </svg>
+        </div>
+        <p class="text-sm font-bold" style="color:var(--text)">로그인이 필요합니다</p>
+        <p class="text-xs max-w-xs leading-relaxed" style="color:var(--text-dim)">
+          우측 상단의 구글 로그인을 진행하시면 소속 교회의 찬양 콘티와 공유 악보를 확인하실 수 있습니다.
+        </p>
+      </div>
+    `;
+    hide(els.contiEmptyState);
+    return;
   }
+
+  const isLeader = state.activeMenu === 'leader';
+  const myEmail = (state.currentUser?.email || '').toLowerCase().trim();
+  const myOrgId = state.currentUser?.orgId || '';
+
+  // 계정 및 소속 교회별 콘티 필터링
+  let contis = (state.contis || []).filter(c => {
+    // 1) 소속 교회 콘티 (같은 orgId)
+    if (myOrgId && c.orgId === myOrgId) return true;
+
+    // 2) 내가 작성한 콘티
+    const author = (c.authorEmail || '').toLowerCase().trim();
+    if (myEmail && author === myEmail) return true;
+
+    // 3) 나에게 공유된 콘티 (sharedWith 또는 sessions 배정)
+    const isShared = (Array.isArray(c.sharedWith) && c.sharedWith.some(e => (e || '').toLowerCase().trim() === myEmail)) ||
+      (Array.isArray(c.sessions) && c.sessions.some(s => (s.email || '').toLowerCase().trim() === myEmail));
+    return isShared;
+  });
 
   if (!contis.length) {
     show(els.contiEmptyState, 'block');
@@ -1262,16 +1480,139 @@ function openContiModal(contiId = null) {
 /* ==================================================
    콘티 공유 모달 관리
    ================================================== */
-function openShareModal(contiId) {
+let orgApprovedMembers = [];
+
+async function openShareModal(contiId) {
   sharingContiId = contiId;
   const conti = state.contis.find(c => c.id === contiId);
   if (!conti) return;
 
-  els.shareContiTitle.textContent = conti.title;
-  els.shareEmailInput.value = '';
+  if (els.shareContiTitle) els.shareContiTitle.textContent = conti.title;
+  if (els.shareEmailInput) els.shareEmailInput.value = '';
+  if (els.shareMemberSearchInput) els.shareMemberSearchInput.value = '';
+
   renderShareEmailList();
   show(els.shareModal, 'flex');
-  setTimeout(() => els.shareEmailInput.focus(), 100);
+
+  // 팀원 검색창 이벤트 (1회 바인딩)
+  if (els.shareMemberSearchInput && !els.shareMemberSearchInput.dataset.bound) {
+    els.shareMemberSearchInput.dataset.bound = 'true';
+    els.shareMemberSearchInput.addEventListener('input', (e) => {
+      renderShareOrgMemberList(e.target.value);
+    });
+  }
+
+  // 소속 교회 팀원 목록 조회
+  if (state.currentUser?.orgId) {
+    if (els.shareOrgMemberList) {
+      els.shareOrgMemberList.innerHTML = '<div class="text-center py-4 text-xs" style="color:var(--text-dim)">팀원 목록을 불러오는 중...</div>';
+    }
+    try {
+      orgApprovedMembers = await getApprovedMembers(state.currentUser.orgId);
+      renderShareOrgMemberList();
+    } catch (err) {
+      console.warn('팀원 목록 불러오기 실패:', err);
+      if (els.shareOrgMemberList) {
+        els.shareOrgMemberList.innerHTML = '<div class="text-center py-4 text-xs text-red-500">팀원 목록을 불러오지 못했습니다</div>';
+      }
+    }
+  } else {
+    if (els.shareOrgMemberList) {
+      els.shareOrgMemberList.innerHTML = '<div class="text-center py-4 text-xs" style="color:var(--text-dim)">소속 교회에 등록된 팀원이 없습니다</div>';
+    }
+  }
+}
+
+function renderShareOrgMemberList(filterText = '') {
+  if (!els.shareOrgMemberList) return;
+  const conti = state.contis.find(c => c.id === sharingContiId);
+  if (!conti) return;
+
+  const currentShared = (conti.sharedWith || []).map(e => (e || '').toLowerCase().trim());
+  const query = filterText.toLowerCase().trim();
+  const myEmail = (state.currentUser?.email || '').toLowerCase().trim();
+
+  // 본인(인도자/작성자)을 제외한 소속 찬양팀원 목록
+  const otherMembers = orgApprovedMembers.filter(m => {
+    const mEmail = (m.email || '').toLowerCase().trim();
+    return !myEmail || mEmail !== myEmail;
+  });
+
+  // 검색어 필터링
+  const filtered = otherMembers.filter(m => {
+    if (!query) return true;
+    const nameMatch = (m.displayName || '').toLowerCase().includes(query);
+    const emailMatch = (m.email || '').toLowerCase().includes(query);
+    return nameMatch || emailMatch;
+  });
+
+  if (els.shareOrgMemberCount) {
+    els.shareOrgMemberCount.textContent = `${otherMembers.length}명 중 ${filtered.length}명`;
+  }
+
+  if (filtered.length === 0) {
+    els.shareOrgMemberList.innerHTML = `<div class="text-center py-4 text-xs" style="color:var(--text-dim)">${query ? '검색된 팀원이 없습니다' : '승인된 찬양팀원이 없습니다'}</div>`;
+    return;
+  }
+
+  els.shareOrgMemberList.innerHTML = '';
+  filtered.forEach(m => {
+    const isShared = currentShared.includes((m.email || '').toLowerCase().trim());
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between gap-2 p-1.5 px-2 rounded-xl transition-all border';
+    row.style.borderColor = isShared ? 'var(--accent)' : 'var(--border)';
+    row.style.background = isShared ? 'rgba(79, 70, 229, 0.08)' : 'var(--surface)';
+
+    const defaultAvatar = `data:image/svg+xml;utf8,${encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#9CA3AF">
+        <path fill-rule="evenodd" d="M18.685 19.097A9.723 9.723 0 0021.75 12c0-5.385-4.365-9.75-9.75-9.75S2.25 6.615 2.25 12a9.723 9.723 0 003.065 7.097A9.716 9.716 0 0012 21.75a9.716 9.716 0 006.685-2.653zm-12.54-1.285A7.486 7.486 0 0112 15a7.486 7.486 0 015.855 2.812A8.224 8.224 0 0112 20.25a8.224 8.224 0 01-5.855-2.438zM15.75 9a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" clip-rule="evenodd" />
+      </svg>
+    `)}`;
+
+    row.innerHTML = `
+      <div class="flex items-center gap-2 min-w-0">
+        <img src="${escapeHtml(m.photoURL || defaultAvatar)}" class="w-6 h-6 rounded-full object-cover shrink-0 border"
+          style="border-color:var(--border)" onerror="this.src='${defaultAvatar}'" />
+        <div class="min-w-0">
+          <p class="text-xs font-bold truncate leading-tight">${escapeHtml(m.displayName || m.email?.split('@')[0] || '팀원')}</p>
+          <p class="text-[10px] truncate leading-tight" style="color:var(--text-dim)">${escapeHtml(m.email || '')}</p>
+        </div>
+      </div>
+      <button data-toggle-member="${escapeHtml(m.email)}"
+        class="px-2 py-1 rounded-lg text-xs font-bold shrink-0 transition-all active:scale-95 shadow-sm"
+        style="${isShared ? 'background:var(--accent);color:#fff' : 'border:1px solid var(--border);color:var(--text);background:var(--surface)'}">
+        ${isShared ? '✓ 공유됨' : '+ 공유'}
+      </button>
+    `;
+
+    const toggleBtn = row.querySelector('[data-toggle-member]');
+    toggleBtn.addEventListener('click', async () => {
+      await toggleShareMember(m.email);
+    });
+
+    els.shareOrgMemberList.appendChild(row);
+  });
+}
+
+async function toggleShareMember(email) {
+  if (!email) return;
+  const conti = state.contis.find(c => c.id === sharingContiId);
+  if (!conti) return;
+
+  if (!Array.isArray(conti.sharedWith)) conti.sharedWith = [];
+  const targetEmail = email.toLowerCase().trim();
+  const existingIdx = conti.sharedWith.findIndex(e => (e || '').toLowerCase().trim() === targetEmail);
+
+  if (existingIdx >= 0) {
+    conti.sharedWith.splice(existingIdx, 1);
+  } else {
+    conti.sharedWith.push(targetEmail);
+  }
+
+  await saveContis();
+  syncContiToFirestore(conti);
+  renderShareEmailList();
+  renderShareOrgMemberList(els.shareMemberSearchInput?.value || '');
 }
 
 function renderShareEmailList() {
@@ -1284,12 +1625,16 @@ function renderShareEmailList() {
     return;
   }
   list.forEach((email, idx) => {
+    const member = orgApprovedMembers.find(m => (m.email || '').toLowerCase().trim() === (email || '').toLowerCase().trim());
+    const label = member ? `${member.displayName || member.email.split('@')[0]}` : email;
+
     const chip = document.createElement('span');
-    chip.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border';
-    chip.style.borderColor = 'var(--border)';
+    chip.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border shadow-sm';
+    chip.style.borderColor = 'var(--accent)';
     chip.style.backgroundColor = 'var(--surface)';
+    chip.title = email;
     chip.innerHTML = `
-      <span>${escapeHtml(email)}</span>
+      <span class="truncate max-w-[150px]">${escapeHtml(label)}</span>
       <button data-remove-share="${idx}" class="text-neutral-400 hover:text-red-500 font-bold ml-0.5 text-xs">×</button>
     `;
     els.shareEmailList.appendChild(chip);
@@ -1300,7 +1645,9 @@ function renderShareEmailList() {
       const idx = Number(btn.dataset.removeShare);
       conti.sharedWith.splice(idx, 1);
       await saveContis();
+      syncContiToFirestore(conti);
       renderShareEmailList();
+      renderShareOrgMemberList(els.shareMemberSearchInput?.value || '');
     });
   });
 }
@@ -3846,6 +4193,7 @@ function wireEventListeners() {
     });
     const sessionEmails = sessions.map(s => s.email).filter(Boolean);
 
+    let savedConti = null;
     if (editingContiId) {
       const target = state.contis.find(c => c.id === editingContiId);
       if (target) {
@@ -3853,10 +4201,12 @@ function wireEventListeners() {
         target.date = date;
         target.memo = memo;
         target.sessions = sessions; // FIX 스냅샷 저장
+        target.orgId = state.currentUser?.orgId || target.orgId || '';
         // 세션 팀원들의 이메일도 sharedWith에 자동 포함하여 열람 권한 부여
         const mergedShared = Array.from(new Set([...(target.sharedWith || []), ...sessionEmails]));
         target.sharedWith = mergedShared;
         target.updatedAt = Date.now();
+        savedConti = target;
       }
     } else {
       const authorName = (state.currentUser && state.currentUser.name && state.currentUser.name !== '찬양인도자')
@@ -3864,6 +4214,7 @@ function wireEventListeners() {
         : (state.currentUser?.email?.includes('@') && state.currentUser.email !== 'leader@continote.com' ? state.currentUser.email.split('@')[0] : '인도자');
       const newConti = {
         id: crypto.randomUUID(),
+        orgId: state.currentUser?.orgId || '',
         title,
         date,
         memo,
@@ -3876,8 +4227,12 @@ function wireEventListeners() {
         updatedAt: Date.now()
       };
       state.contis.unshift(newConti);
+      savedConti = newConti;
     }
     await saveContis();
+    if (savedConti) {
+      syncContiToFirestore(savedConti);
+    }
     if (hasDriveAuth()) {
       syncContisIndexToDrive(state.contis, true);
     }
@@ -3906,8 +4261,12 @@ function wireEventListeners() {
       if (!conti.sharedWith.includes(email)) {
         conti.sharedWith.push(email);
         await saveContis();
+        syncContiToFirestore(conti);
         els.shareEmailInput.value = '';
         renderShareEmailList();
+        renderShareOrgMemberList(els.shareMemberSearchInput?.value || '');
+      } else {
+        alert('이미 공유 목록에 포함되어 있는 이메일입니다.');
       }
     }
   });
@@ -3933,8 +4292,8 @@ function wireEventListeners() {
         showSyncToast('설정된 템포(BPM)가 없습니다. 악보 정보에서 템포를 등록해주세요.', 'error');
         return;
       }
-      const beats = getBeatsPerMeasure(song?.timeSig);
-      toggleMetronome(tempo, els.viewerBpmBtn, beats);
+      const timeSig = song?.timeSig || '4/4';
+      toggleMetronome(tempo, els.viewerBpmBtn, timeSig);
     });
   }
 
@@ -4480,9 +4839,8 @@ function wireEventListeners() {
     els.songMetaBpmBtn.addEventListener('click', () => {
       const bpm = parseInt(els.songMetaTempoInput.value.trim(), 10);
       const timeSig = els.songMetaTimeSigSelect?.value || '4/4';
-      const beats = getBeatsPerMeasure(timeSig);
       if (bpm && bpm >= 20 && bpm <= 300) {
-        toggleMetronome(bpm, els.songMetaBpmBtn, beats);
+        toggleMetronome(bpm, els.songMetaBpmBtn, timeSig);
       }
     });
   }
@@ -4961,24 +5319,6 @@ function wireEventListeners() {
     });
   }
 
-  // Google Drive 연결
-  els.driveConnectBtn.addEventListener('click', () => {
-    handleLoginClick();
-  });
-
-  if (els.driveManualSyncBtn) {
-    els.driveManualSyncBtn.addEventListener('click', async () => {
-      await runFullDriveSync(true);
-      renderContiListView();
-      if (state.viewLevel === 'songList') {
-        await loadSongs();
-        renderSongListView();
-      } else if (state.viewLevel === 'songLibrary') {
-        renderSongLibraryView();
-      }
-      applyUIState();
-    });
-  }
 
   // 곡 넘김 핫스팟
   els.hotspotPrev.addEventListener('click', goPrev);
@@ -5143,6 +5483,15 @@ function wireEventListeners() {
   // [관리자 전용] 승인 모달 닫기
   document.querySelectorAll('[data-close-org-admin]').forEach(el => {
     el.addEventListener('click', () => hide(els.orgAdminModal));
+  });
+
+  // [클라우드 실시간 동기화] 콘티 상세(곡 목록, 송폼, 순서) 변경 시 Firestore 자동 백그라운드 동기화
+  window.addEventListener('continote:conti-updated', (e) => {
+    const targetContiId = e.detail?.contiId || state.currentContiId;
+    const target = state.contis.find(c => c.id === targetContiId);
+    if (target) {
+      syncContiToFirestore(target);
+    }
   });
 
   window.addEventListener('resize', debounce(renderAll, 200));

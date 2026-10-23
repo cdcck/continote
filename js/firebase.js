@@ -212,6 +212,17 @@ export async function approveUser(targetUid) {
   });
 }
 
+/**
+ * 소속 조직의 승인된 팀원 목록 조회 (공유 대상 선택용)
+ */
+export async function getApprovedMembers(orgId) {
+  if (!orgId) return [];
+  const usersColl = collection(db, 'users');
+  const q = query(usersColl, where('orgId', '==', orgId), where('status', '==', 'approved'));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+}
+
 // ==========================================
 // [4] Songs (곡 마스터 & 버전 공유 라이브러리)
 // ==========================================
@@ -326,42 +337,72 @@ export async function saveContiSet({
   orgId,
   leaderUid,
   leaderName,
+  leaderEmail = '',
+  authorEmail = '',
   title,
   date,
   items = [], // [{ songId, versionId, songTitle, songForm, stickers, ... }]
-  memo = ''
+  memo = '',
+  sharedWith = []
 }) {
   if (!orgId) throw new Error('orgId가 필요합니다.');
 
+  const email = (authorEmail || leaderEmail || '').toLowerCase().trim();
   const contiData = {
     orgId,
     leaderUid: leaderUid || '',
     leaderName: leaderName || '인도자',
+    leaderEmail: email,
+    authorEmail: email,
     title: title.trim(),
     date: date || new Date().toISOString().split('T')[0],
     items: items, // 스냅샷 복사본
     memo: memo || '',
+    sharedWith: Array.isArray(sharedWith) ? sharedWith.map(e => (e || '').toLowerCase().trim()).filter(Boolean) : [],
     updatedAt: serverTimestamp()
   };
 
-  if (id) {
-    const contiRef = doc(db, 'contis', id);
-    await updateDoc(contiRef, contiData);
-    return { id, ...contiData };
-  } else {
-    contiData.createdAt = serverTimestamp();
-    const docRef = await addDoc(collection(db, 'contis'), contiData);
-    return { id: docRef.id, ...contiData };
-  }
+  const targetId = id || crypto.randomUUID();
+  const contiRef = doc(db, 'contis', targetId);
+  await setDoc(contiRef, {
+    ...contiData,
+    createdAt: serverTimestamp()
+  }, { merge: true });
+
+  return { id: targetId, ...contiData };
 }
 
 /**
- * 조직 내 콘티 세트리스트 목록 조회
+ * 조직 내 콘티 세트리스트 목록 조회 (및 이메일로 공유받은 콘티 병합 조회)
  */
-export async function getOrganizationContis(orgId) {
-  if (!orgId) return [];
+export async function getOrganizationContis(orgId, userEmail = '') {
+  const contisMap = new Map();
   const contisColl = collection(db, 'contis');
-  const q = query(contisColl, where('orgId', '==', orgId), orderBy('date', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // 1) 소속 조직(orgId)의 콘티 조회
+  if (orgId) {
+    try {
+      const qOrg = query(contisColl, where('orgId', '==', orgId));
+      const snapOrg = await getDocs(qOrg);
+      snapOrg.docs.forEach(d => contisMap.set(d.id, { id: d.id, ...d.data() }));
+    } catch (err) {
+      console.warn('[Firebase] orgId 콘티 조회 실패:', err);
+    }
+  }
+
+  // 2) userEmail로 공유된(sharedWith에 포함된) 콘티 조회
+  if (userEmail) {
+    try {
+      const qShared = query(contisColl, where('sharedWith', 'array-contains', userEmail.toLowerCase().trim()));
+      const snapShared = await getDocs(qShared);
+      snapShared.docs.forEach(d => contisMap.set(d.id, { id: d.id, ...d.data() }));
+    } catch (err) {
+      console.warn('[Firebase] sharedWith 콘티 조회 실패:', err);
+    }
+  }
+
+  const results = Array.from(contisMap.values());
+  // 날짜 내림차순 정렬
+  results.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  return results;
 }
