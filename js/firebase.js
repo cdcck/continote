@@ -230,6 +230,7 @@ export async function getApprovedMembers(orgId) {
 /**
  * 곡 마스터 등록 (이미지 압축 후 Firestore 저장)
  * @param {Object} param
+ * @param {string} [param.id] 문서 ID (지정 시 1:1 매핑)
  * @param {string} param.orgId 소속 조직 ID
  * @param {string} param.title 곡 제목
  * @param {string} param.pHash 유사도 지문 해시
@@ -237,25 +238,54 @@ export async function getApprovedMembers(orgId) {
  * @param {string} [param.initialKey] 초기 조 (예: G, A)
  * @param {string} [param.createdByUid] 등록자 UID
  */
-export async function addSongMaster({ orgId, title, pHash, imageSource, initialKey = '', createdByUid = '' }) {
+export async function addSongMaster({
+  id = null,
+  orgId,
+  title,
+  pHash,
+  imageSource,
+  initialKey = '',
+  createdByUid = '',
+  songForm = [],
+  stickers = [],
+  tempo = '',
+  timeSig = '4/4',
+  themes = []
+}) {
   if (!orgId) throw new Error('orgId가 필요합니다.');
   
-  // 100% 무료 WebP 압축
-  const compressedDataUrl = await compressSheetImage(imageSource);
+  // 100% 무료 WebP 압축 (이미지가 주어졌을 때만 압축, 없으면 기존 이미지 유지 가능)
+  let compressedDataUrl = null;
+  if (imageSource) {
+    compressedDataUrl = await compressSheetImage(imageSource);
+  }
 
-  const songsColl = collection(db, 'songs');
-  const docRef = await addDoc(songsColl, {
+  const songData = {
     orgId,
-    title: title.trim(),
+    title: (title || '제목 없음').trim(),
     pHash: pHash || '',
-    imageData: compressedDataUrl, // DataURL 직접 저장 (약 200~350KB)
     initialKey: initialKey || '',
+    songForm: Array.isArray(songForm) ? songForm : [],
+    stickers: Array.isArray(stickers) ? stickers : [],
+    tempo: tempo || '',
+    timeSig: timeSig || '4/4',
+    themes: Array.isArray(themes) ? themes : [],
     createdByUid,
-    createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
-  });
+  };
 
-  return { id: docRef.id, title, pHash, imageData: compressedDataUrl };
+  if (compressedDataUrl) {
+    songData.imageData = compressedDataUrl;
+  }
+
+  const targetId = id || crypto.randomUUID();
+  const songRef = doc(db, 'songs', targetId);
+  await setDoc(songRef, {
+    ...songData,
+    createdAt: serverTimestamp()
+  }, { merge: true });
+
+  return { id: targetId, title, pHash, imageData: compressedDataUrl, songForm, stickers };
 }
 
 /**
@@ -264,9 +294,15 @@ export async function addSongMaster({ orgId, title, pHash, imageSource, initialK
 export async function getOrganizationSongs(orgId) {
   if (!orgId) return [];
   const songsColl = collection(db, 'songs');
-  const q = query(songsColl, where('orgId', '==', orgId), orderBy('createdAt', 'desc'));
+  const q = query(songsColl, where('orgId', '==', orgId));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const songs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  songs.sort((a, b) => {
+    const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (typeof a.createdAt === 'number' ? a.createdAt : 0);
+    const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (typeof b.createdAt === 'number' ? b.createdAt : 0);
+    return timeB - timeA;
+  });
+  return songs;
 }
 
 /**
@@ -347,6 +383,23 @@ export async function saveContiSet({
 }) {
   if (!orgId) throw new Error('orgId가 필요합니다.');
 
+  // [1MB 한도 보호] items 배열 내에서 대용량 이미지 DataURL 필드(image, original) 제거하여 문서 크기 최적화(수 KB)
+  const sanitizedItems = (items || []).map(s => {
+    const { image, original, ...meta } = s;
+    return {
+      ...meta,
+      id: s.id,
+      songId: s.songId || s.id,
+      name: s.name || s.title || '',
+      key: s.key || '',
+      timeSig: s.timeSig || '4/4',
+      tempo: s.tempo || '',
+      themes: s.themes || [],
+      order: typeof s.order === 'number' ? s.order : 0,
+      songform: Array.isArray(s.songform) ? s.songform : []
+    };
+  });
+
   const email = (authorEmail || leaderEmail || '').toLowerCase().trim();
   const contiData = {
     orgId,
@@ -356,7 +409,7 @@ export async function saveContiSet({
     authorEmail: email,
     title: title.trim(),
     date: date || new Date().toISOString().split('T')[0],
-    items: items, // 스냅샷 복사본
+    items: sanitizedItems, // 경량 메타데이터 (수 KB)
     memo: memo || '',
     sharedWith: Array.isArray(sharedWith) ? sharedWith.map(e => (e || '').toLowerCase().trim()).filter(Boolean) : [],
     updatedAt: serverTimestamp()

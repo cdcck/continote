@@ -38,7 +38,8 @@ import {
   addSongMaster, saveSongVersion, getOrganizationSongs, getSongVersions,
   loginWithGoogle, logoutUser, subscribeAuth, getUserProfile,
   getOrganizationList, createOrganization, requestJoinOrganization,
-  getPendingUsers, approveUser, getApprovedMembers, saveContiSet, getOrganizationContis
+  getPendingUsers, approveUser, getApprovedMembers, saveContiSet, getOrganizationContis,
+  getSongById
 } from './firebase.js';
 
 // DOM Elements Cache
@@ -860,14 +861,36 @@ function initFirebaseAuth() {
           if (els.orgAdminSectionDivider) hide(els.orgAdminSectionDivider);
         }
 
-        // Firestore 클라우드 콘티 및 악보 라이브러리 실시간 동기화
-        await Promise.all([
-          syncCloudContis(profile.orgId, user.email),
-          syncCloudSongs(profile.orgId)
-        ]);
-
+        // 즉시 로컬 캐시로 화면 렌더링
         renderContiListView();
         applyUIState();
+
+        // [SWR 백그라운드 동기화] UI 블로킹 없이 백그라운드에서 조용히 클라우드와 diff 동기화
+        (async () => {
+          try {
+            // 1. 로컬에 작성된 기존 콘티 및 악보를 Firestore 클라우드로 자동 초기 업로드 (리더 ➔ 클라우드)
+            await syncAllLocalDataToCloud(profile.orgId, state.currentUser);
+
+            // 2. Firestore 클라우드 콘티 및 악보 라이브러리 실시간 동기화 (클라우드 ➔ 로컬)
+            await Promise.all([
+              syncCloudContis(profile.orgId, user.email),
+              syncCloudSongs(profile.orgId)
+            ]);
+
+            // 동기화 완료 후 화면 조용히 최신 데이터로 갱신
+            renderContiListView();
+            if (state.viewLevel === 'songList' && state.currentContiId) {
+              await loadSongs();
+              renderSongListView();
+            }
+            if (state.viewLevel === 'songLibrary') {
+              renderSongLibraryView();
+            }
+            applyUIState();
+          } catch (syncErr) {
+            console.warn('[Firebase] 백그라운드 클라우드 동기화 대기:', syncErr);
+          }
+        })();
       } catch (err) {
         console.error('유저 프로필 동기화 오류:', err);
       }
@@ -883,6 +906,102 @@ function initFirebaseAuth() {
       applyUIState();
     }
   });
+}
+
+/**
+ * 로컬에만 존재하는 기존 콘티와 악보들을 Firestore 클라우드로 자동 일괄 업로드(마이그레이션)
+ */
+export async function syncAllLocalDataToCloud(orgId, user) {
+  if (!orgId || !user) return;
+  const userEmail = (user.email || '').toLowerCase().trim();
+  const userName = user.name || userEmail.split('@')[0];
+
+  // 1. 로컬 콘티 및 콘티 내 악보 클라우드 분리 업로드
+  const localContis = state.contis || [];
+  let contisChanged = false;
+
+  for (const c of localContis) {
+    if (!c.orgId) {
+      c.orgId = orgId;
+      contisChanged = true;
+    }
+    if (!c.authorEmail || c.authorEmail === 'leader@continote.com') {
+      c.authorEmail = userEmail;
+      c.authorName = userName;
+      contisChanged = true;
+    }
+
+    // 콘티에 속한 곡 이미지들을 songs 컬렉션에 독립 저장 (1MB 한도 방지)
+    if (Array.isArray(c.songs)) {
+      for (const s of c.songs) {
+        if (s.image && !s._syncedToCloud) {
+          try {
+            await addSongMaster({
+              id: s.id,
+              orgId: orgId,
+              title: s.name || '제목 없음',
+              pHash: s.pHash || '',
+              imageSource: s.image,
+              initialKey: s.key || '',
+              createdByUid: user.uid || ''
+            });
+            s._syncedToCloud = true;
+          } catch (songErr) {
+            console.warn(`[Firebase] 콘티 곡 '${s.name}' 악보 클라우드 업로드 대기:`, songErr);
+          }
+        }
+      }
+    }
+
+    try {
+      await saveContiSet({
+        id: c.id,
+        orgId: orgId,
+        leaderUid: user.uid || '',
+        leaderName: c.authorName || userName,
+        leaderEmail: c.authorEmail || userEmail,
+        authorEmail: c.authorEmail || userEmail,
+        title: c.title,
+        date: c.date,
+        items: Array.isArray(c.songs) ? c.songs : [],
+        memo: c.memo || '',
+        sharedWith: Array.isArray(c.sharedWith) ? c.sharedWith : []
+      });
+    } catch (err) {
+      console.warn(`[Firebase] 로컬 콘티 '${c.title}' 클라우드 업로드 실패:`, err);
+    }
+  }
+
+  if (contisChanged) {
+    await saveContis();
+  }
+
+  // 2. 로컬 마스터 악보 라이브러리 클라우드 업로드 (송폼 및 스티커 포함)
+  const localSongs = state.allSongs || [];
+  for (const s of localSongs) {
+    if (s.image) {
+      try {
+        const stickers = state.stickersBySong[s.id] || (await loadStickers(s.id)) || [];
+        await addSongMaster({
+          id: s.id,
+          orgId: orgId,
+          title: s.name,
+          pHash: s.pHash || '',
+          imageSource: s.image,
+          initialKey: s.key || '',
+          createdByUid: user.uid || '',
+          songForm: Array.isArray(s.songform) ? s.songform : [],
+          stickers: Array.isArray(stickers) ? stickers : [],
+          tempo: s.tempo || '',
+          timeSig: s.timeSig || '4/4',
+          themes: Array.isArray(s.themes) ? s.themes : []
+        });
+        s._syncedToCloud = true;
+      } catch (err) {
+        console.warn(`[Firebase] 로컬 악보 '${s.name}' 클라우드 업로드 대기:`, err);
+      }
+    }
+  }
 }
 
 /**
@@ -904,7 +1023,15 @@ export async function syncCloudContis(orgId, userEmail = '') {
           existing.sharedWith = Array.isArray(cc.sharedWith) ? cc.sharedWith : (existing.sharedWith || []);
           existing.orgId = cc.orgId || existing.orgId;
           if (Array.isArray(cc.items) && cc.items.length > 0) {
-            existing.songs = cc.items;
+            const existingSongMap = new Map((existing.songs || []).map(s => [s.id, s]));
+            existing.songs = cc.items.map(item => {
+              const localSong = existingSongMap.get(item.id);
+              return {
+                ...item,
+                image: item.image || localSong?.image || '',
+                original: item.original || localSong?.original || ''
+              };
+            });
           }
         } else {
           localContiMap.set(cc.id, {
@@ -943,10 +1070,20 @@ export async function syncCloudSongs(orgId) {
       const localMap = new Map((state.allSongs || []).map(s => [s.id, s]));
       for (const cs of cloudSongs) {
         const existing = localMap.get(cs.id);
+        const sf = Array.isArray(cs.songForm) ? cs.songForm : (Array.isArray(cs.songform) ? cs.songform : []);
+        const st = Array.isArray(cs.stickers) ? cs.stickers : [];
         if (existing) {
           existing.name = cs.title || existing.name;
-          existing.image = cs.imageData || existing.image;
+          if (cs.imageData) existing.image = cs.imageData;
           existing.key = cs.initialKey || existing.key;
+          existing.tempo = cs.tempo || existing.tempo || '';
+          existing.timeSig = cs.timeSig || existing.timeSig || '4/4';
+          existing.themes = cs.themes || existing.themes || [];
+          if (sf.length > 0) existing.songform = sf;
+          if (st.length > 0) {
+            state.stickersBySong[cs.id] = st;
+            await saveStickers(cs.id);
+          }
           await saveLibrarySong(existing);
         } else {
           const newLibSong = {
@@ -955,12 +1092,18 @@ export async function syncCloudSongs(orgId) {
             image: cs.imageData,
             original: cs.imageData,
             key: cs.initialKey || '',
+            tempo: cs.tempo || '',
+            timeSig: cs.timeSig || '4/4',
             pHash: cs.pHash || '',
-            themes: [],
+            themes: cs.themes || [],
             order: 0,
-            songform: [],
+            songform: sf,
             createdAt: cs.createdAt?.toMillis ? cs.createdAt.toMillis() : Date.now()
           };
+          if (st.length > 0) {
+            state.stickersBySong[cs.id] = st;
+            await saveStickers(cs.id);
+          }
           localMap.set(cs.id, newLibSong);
           await saveLibrarySong(newLibSong);
         }
@@ -976,12 +1119,31 @@ export async function syncCloudSongs(orgId) {
 }
 
 /**
- * 단일 콘티를 Firestore 클라우드에 백그라운드 동기화
+ * 단일 콘티를 Firestore 클라우드에 백그라운드 동기화 (곡 이미지 분리 저장 보장)
  */
 export function syncContiToFirestore(conti) {
   if (!conti || !state.currentUser?.orgId) return;
   conti.orgId = state.currentUser.orgId;
   const authorEmail = (conti.authorEmail || state.currentUser.email || '').toLowerCase().trim();
+
+  // 콘티 내 곡들의 이미지도 addSongMaster로 백그라운드 업로드
+  if (Array.isArray(conti.songs)) {
+    for (const s of conti.songs) {
+      if (s.image && !s._syncedToCloud) {
+        addSongMaster({
+          id: s.id,
+          orgId: state.currentUser.orgId,
+          title: s.name || '제목 없음',
+          pHash: s.pHash || '',
+          imageSource: s.image,
+          initialKey: s.key || '',
+          createdByUid: state.currentUser.uid || ''
+        }).then(() => { s._syncedToCloud = true; })
+          .catch(e => console.warn('[Firebase] 곡 이미지 업로드 대기:', e));
+      }
+    }
+  }
+
   saveContiSet({
     id: conti.id,
     orgId: state.currentUser.orgId,
@@ -995,6 +1157,59 @@ export function syncContiToFirestore(conti) {
     memo: conti.memo || '',
     sharedWith: Array.isArray(conti.sharedWith) ? conti.sharedWith : []
   }).catch(err => console.warn('[Firebase] 콘티 클라우드 저장 실패:', err));
+}
+
+/**
+ * 콘티 곡 목록 중 이미지가 누락된 곡이 있으면 state.allSongs 또는 Firestore에서 지연 로딩 (Lazy Hydration)
+ */
+export async function hydrateContiSongImages(songs) {
+  if (!Array.isArray(songs) || songs.length === 0) return false;
+  const missing = songs.filter(s => !s.image);
+  if (missing.length === 0) return false;
+
+  const libMap = new Map((state.allSongs || []).map(s => [s.id, s]));
+  let hasChanges = false;
+
+  for (const s of missing) {
+    // 1) 로컬 라이브러리 캐시 확인
+    const libSong = libMap.get(s.id);
+    if (libSong && libSong.image) {
+      s.image = libSong.image;
+      s.original = libSong.original || libSong.image;
+      hasChanges = true;
+      continue;
+    }
+
+    // 2) Firestore songs 컬렉션에서 다운로드
+    try {
+      const cloudSong = await getSongById(s.id);
+      if (cloudSong && cloudSong.imageData) {
+        s.image = cloudSong.imageData;
+        s.original = cloudSong.imageData;
+        hasChanges = true;
+        // 라이브러리에도 캐싱
+        await saveLibrarySong({
+          id: cloudSong.id,
+          name: cloudSong.title || s.name,
+          image: cloudSong.imageData,
+          original: cloudSong.imageData,
+          key: cloudSong.initialKey || s.key || '',
+          pHash: cloudSong.pHash || '',
+          themes: s.themes || [],
+          order: 0,
+          songform: [],
+          createdAt: Date.now()
+        });
+      }
+    } catch (err) {
+      console.warn(`[Firebase] 곡 '${s.name}' 악보 다운로드 대기:`, err);
+    }
+  }
+
+  if (hasChanges) {
+    await saveCurrentConti();
+  }
+  return hasChanges;
 }
 
 /* ==================================================
@@ -1013,7 +1228,8 @@ function createContiCardElement(conti, isLeader, myEmail) {
   card.style.backgroundColor = 'var(--surface)';
 
   const songCount = getContiSongCount(conti);
-  const isMine = (conti.authorEmail || 'leader@continote.com') === myEmail;
+  const author = (conti.authorEmail || conti.leaderEmail || 'leader@continote.com').toLowerCase().trim();
+  const isMine = author === myEmail;
   // 인도자 메뉴에서 내가 직접 등록한 콘티만 수정/공유/삭제 가능 (사용자 메뉴는 일체 관리 버튼 없음)
   const canManage = isLeader && isMine;
 
@@ -1182,21 +1398,38 @@ export function renderContiListView() {
 
   // 계정 및 소속 교회별 콘티 필터링
   let contis = (state.contis || []).filter(c => {
-    // 1) 소속 교회 콘티 (같은 orgId)
+    const author = (c.authorEmail || c.leaderEmail || '').toLowerCase().trim();
+    const isMine = Boolean(myEmail && author === myEmail);
+
+    // [1] 인도자 메뉴: 내가 직접 작성/등록한 내 콘티만 표시
+    if (isLeader) {
+      return isMine;
+    }
+
+    // [2] 사용자(팀원) 메뉴: 소속 교회 전체 콘티 + 나에게 공유/배정된 콘티 + 내가 작성한 콘티
     if (myOrgId && c.orgId === myOrgId) return true;
+    if (isMine) return true;
 
-    // 2) 내가 작성한 콘티
-    const author = (c.authorEmail || '').toLowerCase().trim();
-    if (myEmail && author === myEmail) return true;
-
-    // 3) 나에게 공유된 콘티 (sharedWith 또는 sessions 배정)
     const isShared = (Array.isArray(c.sharedWith) && c.sharedWith.some(e => (e || '').toLowerCase().trim() === myEmail)) ||
       (Array.isArray(c.sessions) && c.sessions.some(s => (s.email || '').toLowerCase().trim() === myEmail));
     return isShared;
   });
 
   if (!contis.length) {
-    show(els.contiEmptyState, 'block');
+    if (els.contiEmptyState) {
+      show(els.contiEmptyState, 'block');
+      const titleEl = els.contiEmptyState.querySelector('p.font-bold');
+      const descEl = els.contiEmptyState.querySelector('p.text-xs, p.text-sm');
+      if (isLeader) {
+        if (titleEl) titleEl.textContent = '내가 등록한 예배 콘티가 없습니다';
+        if (descEl) descEl.textContent = '우측 상단 또는 아래 버튼을 눌러 새 콘티를 만들어보세요.';
+        if (els.emptyContiCreateBtn) show(els.emptyContiCreateBtn, 'inline-flex');
+      } else {
+        if (titleEl) titleEl.textContent = '공유받은 예배 콘티가 없습니다';
+        if (descEl) descEl.textContent = '인도자가 등록한 콘티 또는 나에게 공유된 콘티가 이곳에 표시됩니다.';
+        if (els.emptyContiCreateBtn) hide(els.emptyContiCreateBtn);
+      }
+    }
     return;
   }
   hide(els.contiEmptyState);
@@ -1668,7 +1901,14 @@ export async function openSongList(contiId) {
   applyUIState();
   pushAppState();
 
-  // 2. [백그라운드 비동기 동기화] Google Drive 최신 악보/스티커 확인 후 완료 시 조용히 갱신
+  // 2. [지연 이미지 복원 (Lazy Hydration)] 악보 이미지가 누락된 곡이 있다면 state.allSongs 또는 Firestore에서 백그라운드 다운로드
+  hydrateContiSongImages(state.songs).then(hasChanges => {
+    if (hasChanges && state.viewLevel === 'songList' && state.currentContiId === contiId) {
+      renderSongListView();
+    }
+  }).catch(err => console.warn('악보 지연 복원 대기:', err));
+
+  // 3. [백그라운드 비동기 동기화] Google Drive 최신 악보/스티커 확인 후 완료 시 조용히 갱신
   if (hasDriveAuth()) {
     syncContiDetailFromDrive(contiId).then(async (updatedConti) => {
       if (updatedConti && state.viewLevel === 'songList' && state.currentContiId === contiId) {
@@ -1954,20 +2194,24 @@ export function renderSongLibraryView() {
     }
 
     const registrantName = song.authorName || state.currentUser?.name || '인도자';
-    const myEmail = state.currentUser?.email || '';
+    const myEmail = (state.currentUser?.email || '').toLowerCase().trim();
     const isShared = Boolean(
       song.isShared === true ||
       song.shared === true ||
       (Array.isArray(song.sharedWith) && song.sharedWith.length > 0) ||
-      (song.authorEmail && myEmail && song.authorEmail !== myEmail)
+      (song.authorEmail && myEmail && song.authorEmail.toLowerCase().trim() !== myEmail)
     );
 
+    const isAdmin = state.currentUser?.role === 'admin';
+    const isMine = Boolean(song.authorEmail && myEmail && (song.authorEmail.toLowerCase().trim() === myEmail));
+    const canManage = isAdmin || isMine;
+
     const shareIconHtml = isShared ? `
-      <span data-toggle-share="${song.id}" class="shrink-0 flex items-center justify-center cursor-pointer p-1 sm:p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all" style="color:var(--accent)" title="공유 악보 (클릭하여 개인으로 변경)">
+      <span ${canManage ? `data-toggle-share="${song.id}" class="shrink-0 flex items-center justify-center cursor-pointer p-1 sm:p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"` : 'class="shrink-0 flex items-center justify-center p-1 sm:p-1.5"'} style="color:var(--accent)" title="${canManage ? '공유 악보 (클릭하여 개인으로 변경)' : '교회 찬양팀 공유 악보'}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-4 h-4 sm:w-[18px] sm:h-[18px]"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
       </span>
     ` : `
-      <span data-toggle-share="${song.id}" class="shrink-0 flex items-center justify-center cursor-pointer p-1 sm:p-1.5 rounded-lg text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all" title="개인 악보 (클릭하여 공유로 변경)">
+      <span ${canManage ? `data-toggle-share="${song.id}" class="shrink-0 flex items-center justify-center cursor-pointer p-1 sm:p-1.5 rounded-lg text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"` : 'class="shrink-0 flex items-center justify-center p-1 sm:p-1.5 text-neutral-400"'} title="${canManage ? '개인 악보 (클릭하여 공유로 변경)' : '개인 악보'}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 sm:w-[18px] sm:h-[18px]"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       </span>
     `;
@@ -2025,6 +2269,7 @@ export function renderSongLibraryView() {
               <span class="whitespace-nowrap hidden sm:inline">전체 가져오기</span>
             </button>` : ''}
         </div>
+        ${canManage ? `
         <div class="flex flex-col items-stretch gap-1.5">
           <button data-edit-library-song="${song.id}" class="p-2 rounded-xl text-neutral-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/20 active:scale-95 transition-all shrink-0 border flex items-center justify-center"
             style="border-color:var(--border);background:var(--surface-2)" title="곡 정보(곡명, Key, 박자, 템포, 태그) 수정">
@@ -2034,7 +2279,7 @@ export function renderSongLibraryView() {
             style="border-color:var(--border);background:var(--surface-2)" title="악보 보관함에서 영구 삭제">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
           </button>
-        </div>
+        </div>` : ''}
       </div>
     `;
 
@@ -2223,7 +2468,11 @@ function openAddToContiModal(song, mode = 'sheet') {
    [3단계] 악보 뷰어 화면 (Viewer Section)
    ================================================== */
 export function isTwoPageViewActive() {
-  return state.activeMenu === 'user' && (state.viewSheetCount === 2) && (window.innerWidth >= 640) && (state.songs.length > 1);
+  const viewerW = (els.viewer && els.viewer.clientWidth > 0) ? els.viewer.clientWidth : window.innerWidth;
+  const viewerH = (els.viewer && els.viewer.clientHeight > 0) ? els.viewer.clientHeight : window.innerHeight;
+  // 해상도 비율 감지: 가로가 더 긴 경우(가로 모드)에만 2면 활성화, 세로가 더 길면(세로 모드) 1면만 표시
+  const isLandscape = viewerW > viewerH;
+  return state.activeMenu === 'user' && (state.viewSheetCount === 2) && isLandscape && (viewerW >= 640) && (state.songs.length > 1);
 }
 
 export async function openViewerForSong(songIndex) {
@@ -2284,8 +2533,17 @@ export async function renderAll() {
   }
 
   const isTwoPage = isTwoPageViewActive();
+  if (isTwoPage && state.currentIndex % 2 !== 0) {
+    state.currentIndex = Math.floor(state.currentIndex / 2) * 2;
+  }
   const songLeft = state.songs[state.currentIndex];
   const songRight = isTwoPage ? (state.songs[state.currentIndex + 1] || null) : null;
+
+  // 뷰어 악보 이미지가 아직 다운로드되지 않은 경우 즉시 지연 복원
+  const targets = [songLeft, songRight].filter(Boolean);
+  if (targets.some(s => !s.image)) {
+    await hydrateContiSongImages(targets);
+  }
 
   if (isTwoPage) {
     const vw = els.viewer.clientWidth;
@@ -2629,7 +2887,9 @@ export async function switchToMenu(targetMenu, isFromHistory = false) {
    UI 가시성 및 상태 제어
    ================================================== */
 export function applyUIState() {
-  document.documentElement.classList.toggle('dark', isDarkThemeActive());
+  const isDark = isDarkThemeActive();
+  document.documentElement.classList.toggle('dark', isDark);
+  document.documentElement.classList.toggle('light', !isDark);
 
   // 테마 컬러 모드 설정 (사용자: 보라 / 인도자: 주황 / 곡 목록: 파랑 / 설정: 보라)
   let colorMode = 'user';
@@ -2953,7 +3213,6 @@ export function applyUIState() {
   const canZoom = !state.locked && hasSongs;
   updateZoomVisibility(!canZoom);
 
-  const isDark = isDarkThemeActive();
   const defaultPenColor = isDark ? '#FFFFFF' : '#000000';
   if (!state.penColor || state.penColor === '#000000' || state.penColor === '#FFFFFF' || state.penColor === '#2B2730') {
     state.penColor = defaultPenColor;
@@ -4085,8 +4344,8 @@ function updateSettingsUIButtons() {
   setButtonActive(els.navVBtn, state.navDirection === 'vertical');
   if (els.pageAnimSmoothBtn) setButtonActive(els.pageAnimSmoothBtn, (state.pageAnim || 'smooth') === 'smooth');
   if (els.pageAnimInstantBtn) setButtonActive(els.pageAnimInstantBtn, state.pageAnim === 'instant');
-  if (els.viewCount1Btn) setButtonActive(els.viewCount1Btn, (state.viewSheetCount || 1) === 1);
-  if (els.viewCount2Btn) setButtonActive(els.viewCount2Btn, state.viewSheetCount === 2);
+  if (els.viewCount1Btn) setButtonActive(els.viewCount1Btn, state.viewSheetCount === 1);
+  if (els.viewCount2Btn) setButtonActive(els.viewCount2Btn, (state.viewSheetCount || 2) === 2);
 }
 
 /* ==================================================
@@ -4995,6 +5254,19 @@ function wireEventListeners() {
       if (isFromLibrary) {
         // [1. 마스터 악보 보관함(곡 목록) 모드]
         await saveLibrarySong(song);
+        if (state.currentUser?.orgId) {
+          addSongMaster({
+            id: song.id,
+            orgId: state.currentUser.orgId,
+            title: song.name,
+            songForm: song.songform || [],
+            stickers: state.stickersBySong[song.id] || [],
+            initialKey: song.key || '',
+            tempo: song.tempo || '',
+            timeSig: song.timeSig || '4/4',
+            themes: song.themes || []
+          }).catch(e => console.warn('[Firebase] 마스터 곡 송폼 동기화 대기:', e));
+        }
         if (hasDriveAuth()) {
           syncLibraryToDrive(state.allSongs, true);
         }
@@ -5008,6 +5280,19 @@ function wireEventListeners() {
           libMatch.songform = [...currentOrderFlow];
           libMatch.updatedAt = now;
           await saveLibrarySong(libMatch);
+          if (state.currentUser?.orgId) {
+            addSongMaster({
+              id: libMatch.id,
+              orgId: state.currentUser.orgId,
+              title: libMatch.name,
+              songForm: libMatch.songform || [],
+              stickers: state.stickersBySong[libMatch.id] || [],
+              initialKey: libMatch.key || '',
+              tempo: libMatch.tempo || '',
+              timeSig: libMatch.timeSig || '4/4',
+              themes: libMatch.themes || []
+            }).catch(e => console.warn('[Firebase] 마스터 곡 송폼 동기화 대기:', e));
+          }
           if (hasDriveAuth()) {
             syncLibraryToDrive(state.allSongs, false);
           }
@@ -5494,7 +5779,10 @@ function wireEventListeners() {
     }
   });
 
-  window.addEventListener('resize', debounce(renderAll, 200));
+  window.addEventListener('resize', debounce(renderAll, 150));
+  window.addEventListener('orientationchange', () => {
+    setTimeout(renderAll, 100);
+  });
 }
 
 /* ==================================================
@@ -5508,20 +5796,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   state.navDirection = prefs.navDirection || 'horizontal';
   state.songformLabels = prefs.songformLabels || ['A', 'B', 'C', 'D', 'bis', 'I', 'O'];
   state.themes = prefs.themes || ['은혜', '찬양', '감사', '회개', '결단', '십자가', '부흥', '승리'];
-  state.viewSheetCount = prefs.viewSheetCount || 1;
+  state.viewSheetCount = (prefs.viewSheetCount !== undefined && prefs.viewSheetCount !== null) ? prefs.viewSheetCount : 2;
   state.pageAnim = prefs.pageAnim || 'smooth';
   applyStickerStep(prefs.stickerStep || 3);
 
+  // [Local-First SWR: 체감 대기시간 0초 세션 및 UI 즉시 복원]
+  const cachedUser = loadUserSession();
+  if (cachedUser) {
+    state.currentUser = cachedUser;
+    updateAuthUI();
+    if (cachedUser.role === 'admin' && cachedUser.orgId) {
+      if (els.orgAdminSection) show(els.orgAdminSection, 'block');
+      if (els.orgAdminSectionDivider) show(els.orgAdminSectionDivider, 'block');
+      refreshAdminPendingBadge(cachedUser.orgId);
+    }
+  }
+
+  // 데이터 로드 (로컬 IndexedDB로부터 0.01초 만에 화면 즉시 렌더링)
+  state.viewLevel = 'contiList';
+  await loadContis();
+  await loadLibrarySongs();
+
+  // 비동기 백그라운드 Firebase 인증 및 동기화 초기화
   initFirebaseAuth();
   loadTeamMembersFromCache();
   if (hasDriveAuth()) {
     syncTeamMembersFromDrive().catch(e => console.warn('팀원 목록 백그라운드 동기화:', e));
   }
-
-  // 데이터 로드
-  state.viewLevel = 'contiList';
-  await loadContis();
-  await loadLibrarySongs();
 
   // 공유 링크로 진입했을 경우 자동 열람 처리
   const hash = window.location.hash;

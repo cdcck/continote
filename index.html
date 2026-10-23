@@ -18,8 +18,34 @@
   <meta name="apple-mobile-web-app-title" content="ContiNote" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
+  <!-- 다크 모드 깜빡임(FOUC) 방지: 첫 페인트 전 즉시 동기 실행 -->
+  <script>
+    (function () {
+      try {
+        var raw = localStorage.getItem('continote_pref_v3');
+        var pref = raw ? JSON.parse(raw) : null;
+        var theme = (pref && pref.theme) ? pref.theme : 'system';
+        var isDark = theme === 'dark' || (theme === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.classList.remove('light');
+        } else {
+          document.documentElement.classList.remove('dark');
+          document.documentElement.classList.add('light');
+        }
+      } catch (e) {}
+    })();
+  </script>
+
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    if (window.tailwind) {
+      tailwind.config = {
+        darkMode: 'class'
+      };
+    }
+  </script>
 
   <!-- 모듈화된 전용 CSS 스타일시트 -->
   <link rel="stylesheet" href="css/style.css" />
@@ -437,14 +463,14 @@
         <section class="flex items-center justify-between gap-3">
           <div>
             <h3 class="text-sm font-bold">사용자 악보 보기</h3>
-            <p class="text-xs mt-0.5" style="color:var(--text-dim)">태블릿/가로 모드 2페이지 나란히 보기</p>
+            <p class="text-xs mt-0.5" style="color:var(--text-dim)">가로 모드 2면 / 세로 모드 1면</p>
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <button id="viewCount1Btn" class="px-3 sm:px-3.5 py-2 rounded-xl border font-semibold text-xs sm:text-sm active:scale-95 transition-all">
-              1곡씩
+              1면 보기
             </button>
             <button id="viewCount2Btn" class="px-3 sm:px-3.5 py-2 rounded-xl border font-semibold text-xs sm:text-sm active:scale-95 transition-all">
-              2곡씩 (양면)
+              2면 보기
             </button>
           </div>
         </section>
@@ -1814,7 +1840,7 @@
   <!-- ==========================================
        모듈화된 메인 엔트리 스크립트 (ES Module)
        ========================================== -->
-  <script type="module" src="js/app.js?v=20261020_06"></script>
+  <script type="module" src="js/app.js?v=20261023_06"></script>
 </body>
 
 </html>

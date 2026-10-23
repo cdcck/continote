@@ -25,7 +25,7 @@ export const state = {
   eraseMode: false,
   stickerStep: 3, // 스티커 크기 단계 (총 7단계, 기본 3단계: 1.0x)
   stickerScale: 1.0, // 송폼/코드 스티커 배율
-  viewSheetCount: 1, // 사용자 메뉴 악보 보기: 1 (1곡씩) | 2 (2곡씩 나란히)
+  viewSheetCount: 2, // 사용자 메뉴 악보 보기: 1 (항상 1곡씩) | 2 (해상도 자동 감지: 가로 2면 / 세로 1면)
   pageAnim: 'smooth', // 곡 넘김 효과: 'smooth' (부드럽게) | 'instant' (즉시 전환)
   cropTarget: null,
   cropMode: 'auto', // 'auto' | 'manual'
@@ -72,7 +72,7 @@ export function loadPreferences() {
     themes: ['은혜', '찬양', '감사', '회개', '결단', '십자가', '부흥', '승리'],
     stickerStep: 3,
     stickerScale: 1.0,
-    viewSheetCount: 1,
+    viewSheetCount: 2,
     pageAnim: 'smooth'
   };
 }
@@ -86,7 +86,7 @@ export function savePreferences() {
       themes: state.themes,
       stickerStep: state.stickerStep || 3,
       stickerScale: state.stickerScale || 1.0,
-      viewSheetCount: state.viewSheetCount || 1,
+      viewSheetCount: state.viewSheetCount || 2,
       pageAnim: state.pageAnim || 'smooth'
     }));
   } catch (e) {

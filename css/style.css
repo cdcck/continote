@@ -16,6 +16,23 @@
   --header-border: var(--border);
 }
 
+/* 시스템 다크 모드 시 CSS 수준 즉각 반영 (FOUC 방지) */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --bg: #0F0E13;
+    --surface: #1C1A22;
+    --surface-rgb: 28, 26, 34;
+    --surface-2: #242230;
+    --text: #F3F1F7;
+    --text-dim: #8E899B;
+    --accent: #9D4EDD;
+    --accent-soft: rgba(157, 78, 221, 0.2);
+    --border: #322E3D;
+    --header-bg: rgba(28, 26, 34, 0.9);
+    --header-border: var(--border);
+  }
+}
+
 html.dark {
   /* [6. 다크 모드 (Deep Black #0F0E13 / Accent #9D4EDD)] */
   --bg: #0F0E13;
