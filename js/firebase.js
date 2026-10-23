@@ -23,6 +23,8 @@ import {
   orderBy,
   addDoc,
   updateDoc,
+  deleteDoc,
+  onSnapshot,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
@@ -389,14 +391,15 @@ export async function saveContiSet({
     return {
       ...meta,
       id: s.id,
-      songId: s.songId || s.id,
+      songId: s.songId || s.masterSongId || s.id,
       name: s.name || s.title || '',
       key: s.key || '',
       timeSig: s.timeSig || '4/4',
       tempo: s.tempo || '',
       themes: s.themes || [],
       order: typeof s.order === 'number' ? s.order : 0,
-      songform: Array.isArray(s.songform) ? s.songform : []
+      songform: Array.isArray(s.songform) ? s.songform : [],
+      stickers: Array.isArray(s.stickers) ? s.stickers : []
     };
   });
 
@@ -423,6 +426,59 @@ export async function saveContiSet({
   }, { merge: true });
 
   return { id: targetId, ...contiData };
+}
+
+/**
+ * 특정 단일 콘티 세트리스트 조회
+ */
+export async function getContiById(contiId) {
+  if (!contiId) return null;
+  try {
+    const contiRef = doc(db, 'contis', contiId);
+    const snap = await getDoc(contiRef);
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() };
+  } catch (err) {
+    console.warn('[Firebase] 단일 콘티 조회 실패:', err);
+    return null;
+  }
+}
+
+/**
+ * 콘티 세트리스트 삭제
+ */
+export async function deleteContiSet(contiId) {
+  if (!contiId) return;
+  try {
+    const contiRef = doc(db, 'contis', contiId);
+    await deleteDoc(contiRef);
+  } catch (err) {
+    console.warn('[Firebase] 콘티 삭제 실패:', err);
+  }
+}
+
+/**
+ * 조직 내 콘티 세트리스트 실시간 동기화 구독 (onSnapshot)
+ */
+export function subscribeOrganizationContis(orgId, callback, onError) {
+  if (!orgId) return () => {};
+  try {
+    const contisColl = collection(db, 'contis');
+    const qOrg = query(contisColl, where('orgId', '==', orgId));
+    return onSnapshot(qOrg, (snapshot) => {
+      const results = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      results.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      if (typeof callback === 'function') {
+        callback(results);
+      }
+    }, (err) => {
+      console.warn('[Firebase] 콘티 실시간 구독 오류:', err);
+      if (typeof onError === 'function') onError(err);
+    });
+  } catch (err) {
+    console.warn('[Firebase] 콘티 실시간 구독 초기화 실패:', err);
+    return () => {};
+  }
 }
 
 /**

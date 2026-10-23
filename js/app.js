@@ -39,7 +39,7 @@ import {
   loginWithGoogle, logoutUser, subscribeAuth, getUserProfile,
   getOrganizationList, createOrganization, requestJoinOrganization,
   getPendingUsers, approveUser, getApprovedMembers, saveContiSet, getOrganizationContis,
-  getSongById
+  getSongById, getContiById, deleteContiSet, subscribeOrganizationContis
 } from './firebase.js';
 
 // DOM Elements Cache
@@ -813,6 +813,8 @@ async function openOrgAdminModal() {
   }
 }
 
+let contiSnapshotUnsubscribe = null;
+
 /**
  * Firebase Auth 상태 구독 및 자동 세션 관리
  */
@@ -865,6 +867,15 @@ function initFirebaseAuth() {
         renderContiListView();
         applyUIState();
 
+        // [실시간 리스너 구독] 조직 내 콘티 세트리스트 실시간 동기화 (곡 추가/순서변경/삭제 시 타 사용자 즉시 반영)
+        if (contiSnapshotUnsubscribe) {
+          contiSnapshotUnsubscribe();
+          contiSnapshotUnsubscribe = null;
+        }
+        contiSnapshotUnsubscribe = subscribeOrganizationContis(profile.orgId, (cloudContis) => {
+          handleCloudContisUpdate(cloudContis, true);
+        });
+
         // [SWR 백그라운드 동기화] UI 블로킹 없이 백그라운드에서 조용히 클라우드와 diff 동기화
         (async () => {
           try {
@@ -895,6 +906,10 @@ function initFirebaseAuth() {
         console.error('유저 프로필 동기화 오류:', err);
       }
     } else {
+      if (contiSnapshotUnsubscribe) {
+        contiSnapshotUnsubscribe();
+        contiSnapshotUnsubscribe = null;
+      }
       hide(els.pendingApprovalScreen);
       hide(els.orgOnboardingModal);
       if (els.orgAdminSection) hide(els.orgAdminSection);
@@ -1005,6 +1020,123 @@ export async function syncAllLocalDataToCloud(orgId, user) {
 }
 
 /**
+ * Firestore 클라우드 콘티 변경 사항을 로컬 상태와 병합하고 화면 갱신
+ */
+export async function handleCloudContisUpdate(cloudContis, isFullOrgSync = false) {
+  if (!Array.isArray(cloudContis) || cloudContis.length === 0) return false;
+  const localContiMap = new Map((state.contis || []).map(c => [c.id, c]));
+  const libMap = new Map((state.allSongs || []).map(s => [s.id, s]));
+  let hasChanges = false;
+  let currentContiSongsUpdated = false;
+
+  cloudContis.forEach(cc => {
+    const existing = localContiMap.get(cc.id);
+    const cloudItems = Array.isArray(cc.items) ? cc.items : (Array.isArray(cc.songs) ? cc.songs : []);
+
+    if (existing) {
+      const prevSongs = existing.songs || [];
+      const existingSongMap = new Map(prevSongs.map(s => [s.id, s]));
+
+      const mappedSongs = cloudItems.map(item => {
+        const localSong = existingSongMap.get(item.id);
+        const songMasterId = item.songId || item.masterSongId || item.id;
+        const libSong = libMap.get(songMasterId) || libMap.get(item.id);
+        const st = Array.isArray(item.stickers) ? item.stickers : (state.stickersBySong[item.id] || []);
+        if (st.length > 0) {
+          state.stickersBySong[item.id] = st;
+        }
+        return {
+          ...item,
+          image: item.image || localSong?.image || libSong?.image || '',
+          original: item.original || localSong?.original || libSong?.original || ''
+        };
+      });
+
+      // 변경 사항 감지 (곡 수, 곡 식별자, 순서, 송폼, 제목, 날짜, 메모)
+      const songsChanged = (prevSongs.length !== mappedSongs.length) ||
+        mappedSongs.some((s, idx) => {
+          const p = prevSongs[idx];
+          return !p || p.id !== s.id || p.order !== s.order || p.name !== s.name || p.key !== s.key ||
+                 JSON.stringify(p.songform || []) !== JSON.stringify(s.songform || []);
+        });
+
+      if (songsChanged || existing.title !== cc.title || existing.date !== cc.date || existing.memo !== cc.memo) {
+        hasChanges = true;
+      }
+
+      existing.title = cc.title || existing.title;
+      existing.date = cc.date || existing.date;
+      existing.memo = cc.memo || existing.memo;
+      existing.authorEmail = cc.leaderEmail || cc.authorEmail || existing.authorEmail;
+      existing.authorName = cc.leaderName || existing.authorName;
+      existing.sharedWith = Array.isArray(cc.sharedWith) ? cc.sharedWith : (existing.sharedWith || []);
+      existing.orgId = cc.orgId || existing.orgId;
+      existing.songs = mappedSongs;
+      existing.songCount = mappedSongs.length;
+      existing.updatedAt = cc.updatedAt?.toMillis ? cc.updatedAt.toMillis() : Date.now();
+
+      if (state.currentContiId === cc.id && songsChanged) {
+        state.songs = mappedSongs;
+        currentContiSongsUpdated = true;
+      }
+    } else {
+      const mappedSongs = cloudItems.map(item => {
+        const songMasterId = item.songId || item.masterSongId || item.id;
+        const libSong = libMap.get(songMasterId) || libMap.get(item.id);
+        const st = Array.isArray(item.stickers) ? item.stickers : [];
+        if (st.length > 0) {
+          state.stickersBySong[item.id] = st;
+        }
+        return {
+          ...item,
+          image: item.image || libSong?.image || '',
+          original: item.original || libSong?.original || ''
+        };
+      });
+
+      localContiMap.set(cc.id, {
+        id: cc.id,
+        title: cc.title || '새 콘티',
+        date: cc.date || '',
+        memo: cc.memo || '',
+        authorEmail: cc.leaderEmail || cc.authorEmail || '',
+        authorName: cc.leaderName || '인도자',
+        sharedWith: Array.isArray(cc.sharedWith) ? cc.sharedWith : [],
+        sessions: cc.sessions || [],
+        songs: mappedSongs,
+        songCount: mappedSongs.length,
+        orgId: cc.orgId,
+        createdAt: cc.createdAt?.toMillis ? cc.createdAt.toMillis() : Date.now(),
+        updatedAt: cc.updatedAt?.toMillis ? cc.updatedAt.toMillis() : Date.now()
+      });
+      hasChanges = true;
+    }
+  });
+
+  if (hasChanges) {
+    state.contis = Array.from(localContiMap.values());
+    state.contis.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    await saveContis();
+
+    if (state.viewLevel === 'contiList') {
+      renderContiListView();
+    }
+    if (state.viewLevel === 'songList' && currentContiSongsUpdated) {
+      renderSongListView();
+      hydrateContiSongImages(state.songs).then(hydrated => {
+        if (hydrated && state.viewLevel === 'songList') renderSongListView();
+      });
+    } else if (state.viewLevel === 'viewer' && currentContiSongsUpdated) {
+      renderViewerSong();
+      hydrateContiSongImages(state.songs).then(hydrated => {
+        if (hydrated && state.viewLevel === 'viewer') renderViewerSong();
+      });
+    }
+  }
+  return hasChanges;
+}
+
+/**
  * Firestore 클라우드 콘티 목록을 로컬과 병합
  */
 export async function syncCloudContis(orgId, userEmail = '') {
@@ -1012,47 +1144,7 @@ export async function syncCloudContis(orgId, userEmail = '') {
   try {
     const cloudContis = await getOrganizationContis(orgId, userEmail);
     if (cloudContis && cloudContis.length > 0) {
-      const localContiMap = new Map((state.contis || []).map(c => [c.id, c]));
-      cloudContis.forEach(cc => {
-        const existing = localContiMap.get(cc.id);
-        if (existing) {
-          // 클라우드 최신 정보로 병합
-          existing.title = cc.title || existing.title;
-          existing.date = cc.date || existing.date;
-          existing.memo = cc.memo || existing.memo;
-          existing.sharedWith = Array.isArray(cc.sharedWith) ? cc.sharedWith : (existing.sharedWith || []);
-          existing.orgId = cc.orgId || existing.orgId;
-          if (Array.isArray(cc.items) && cc.items.length > 0) {
-            const existingSongMap = new Map((existing.songs || []).map(s => [s.id, s]));
-            existing.songs = cc.items.map(item => {
-              const localSong = existingSongMap.get(item.id);
-              return {
-                ...item,
-                image: item.image || localSong?.image || '',
-                original: item.original || localSong?.original || ''
-              };
-            });
-          }
-        } else {
-          localContiMap.set(cc.id, {
-            id: cc.id,
-            title: cc.title || '새 콘티',
-            date: cc.date || '',
-            memo: cc.memo || '',
-            authorEmail: cc.leaderEmail || cc.authorEmail || '',
-            authorName: cc.leaderName || '인도자',
-            sharedWith: Array.isArray(cc.sharedWith) ? cc.sharedWith : [],
-            sessions: cc.sessions || [],
-            songs: cc.items || cc.songs || [],
-            orgId: cc.orgId,
-            createdAt: cc.createdAt?.toMillis ? cc.createdAt.toMillis() : Date.now(),
-            updatedAt: cc.updatedAt?.toMillis ? cc.updatedAt.toMillis() : Date.now()
-          });
-        }
-      });
-      state.contis = Array.from(localContiMap.values());
-      state.contis.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-      await saveContis();
+      await handleCloudContisUpdate(cloudContis);
     }
   } catch (err) {
     console.warn('[Firebase] 콘티 목록 클라우드 동기화 실패:', err);
@@ -1130,8 +1222,9 @@ export function syncContiToFirestore(conti) {
   if (Array.isArray(conti.songs)) {
     for (const s of conti.songs) {
       if (s.image && !s._syncedToCloud) {
+        const masterId = s.songId || s.masterSongId || s.id;
         addSongMaster({
-          id: s.id,
+          id: masterId,
           orgId: state.currentUser.orgId,
           title: s.name || '제목 없음',
           pHash: s.pHash || '',
@@ -1144,6 +1237,12 @@ export function syncContiToFirestore(conti) {
     }
   }
 
+  const enrichedItems = (Array.isArray(conti.songs) ? conti.songs : []).map(s => ({
+    ...s,
+    songId: s.songId || s.masterSongId || s.id,
+    stickers: state.stickersBySong[s.id] || s.stickers || []
+  }));
+
   saveContiSet({
     id: conti.id,
     orgId: state.currentUser.orgId,
@@ -1153,7 +1252,7 @@ export function syncContiToFirestore(conti) {
     authorEmail: authorEmail,
     title: conti.title,
     date: conti.date,
-    items: Array.isArray(conti.songs) ? conti.songs : [],
+    items: enrichedItems,
     memo: conti.memo || '',
     sharedWith: Array.isArray(conti.sharedWith) ? conti.sharedWith : []
   }).catch(err => console.warn('[Firebase] 콘티 클라우드 저장 실패:', err));
@@ -1171,8 +1270,10 @@ export async function hydrateContiSongImages(songs) {
   let hasChanges = false;
 
   for (const s of missing) {
+    const songIdToFind = s.songId || s.masterSongId || s.id;
+
     // 1) 로컬 라이브러리 캐시 확인
-    const libSong = libMap.get(s.id);
+    const libSong = libMap.get(songIdToFind) || libMap.get(s.id);
     if (libSong && libSong.image) {
       s.image = libSong.image;
       s.original = libSong.original || libSong.image;
@@ -1182,7 +1283,10 @@ export async function hydrateContiSongImages(songs) {
 
     // 2) Firestore songs 컬렉션에서 다운로드
     try {
-      const cloudSong = await getSongById(s.id);
+      let cloudSong = await getSongById(songIdToFind);
+      if (!cloudSong && s.id !== songIdToFind) {
+        cloudSong = await getSongById(s.id);
+      }
       if (cloudSong && cloudSong.imageData) {
         s.image = cloudSong.imageData;
         s.original = cloudSong.imageData;
@@ -1556,6 +1660,9 @@ export function renderContiListView() {
       const target = state.contis.find(c => c.id === id);
       if (!confirm(`'${target?.title || '콘티'}'를 완전히 삭제하시겠습니까?`)) return;
       await deleteConti(id);
+      if (state.currentUser?.orgId) {
+        deleteContiSet(id);
+      }
       if (hasDriveAuth()) {
         await deleteContiFileFromDrive(id);
         await syncContisIndexToDrive(state.contis, true);
@@ -1908,7 +2015,15 @@ export async function openSongList(contiId) {
     }
   }).catch(err => console.warn('악보 지연 복원 대기:', err));
 
-  // 3. [백그라운드 비동기 동기화] Google Drive 최신 악보/스티커 확인 후 완료 시 조용히 갱신
+  // 3. [Firestore 최신 콘티 백그라운드 동기화] 클라우드에 업데이트된 최신 곡 목록/순서 즉시 반영
+  if (state.currentUser?.orgId) {
+    getContiById(contiId).then(async (cloudConti) => {
+      if (!cloudConti) return;
+      await handleCloudContisUpdate([cloudConti]);
+    }).catch(err => console.warn('[Firebase] 콘티 상세 최신화 대기:', err));
+  }
+
+  // 4. [백그라운드 비동기 동기화] Google Drive 최신 악보/스티커 확인 후 완료 시 조용히 갱신
   if (hasDriveAuth()) {
     syncContiDetailFromDrive(contiId).then(async (updatedConti) => {
       if (updatedConti && state.viewLevel === 'songList' && state.currentContiId === contiId) {
@@ -4685,6 +4800,7 @@ function wireEventListeners() {
         const cloned = {
           ...targetAddToContiSong,
           id: newSongId,
+          songId: targetAddToContiSong.id,
           songform: (isFull && Array.isArray(targetAddToContiSong.songform)) ? [...targetAddToContiSong.songform] : [],
           order: targetConti.songs.length
         };
@@ -4702,6 +4818,11 @@ function wireEventListeners() {
         }
 
         await saveContis();
+        syncContiToFirestore(targetConti);
+        if (state.currentContiId === targetConti.id) {
+          state.songs = targetConti.songs;
+          if (state.viewLevel === 'songList') renderSongListView();
+        }
         if (hasDriveAuth() && targetConti.id) {
           syncContiDetailToDrive(targetConti.id, true);
           syncContisIndexToDrive(state.contis, false);
