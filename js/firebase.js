@@ -239,6 +239,9 @@ export async function getApprovedMembers(orgId) {
  * @param {string|Blob} param.imageSource 악보 이미지
  * @param {string} [param.initialKey] 초기 조 (예: G, A)
  * @param {string} [param.createdByUid] 등록자 UID
+ * @param {string} [param.authorEmail] 등록자 이메일
+ * @param {string} [param.authorName] 등록자 이름
+ * @param {boolean} [param.isShared] 찬양팀 공유 여부
  */
 export async function addSongMaster({
   id = null,
@@ -248,6 +251,9 @@ export async function addSongMaster({
   imageSource,
   initialKey = '',
   createdByUid = '',
+  authorEmail = '',
+  authorName = '',
+  isShared = true,
   songForm = [],
   stickers = [],
   tempo = '',
@@ -272,9 +278,13 @@ export async function addSongMaster({
     tempo: tempo || '',
     timeSig: timeSig || '4/4',
     themes: Array.isArray(themes) ? themes : [],
-    createdByUid,
+    createdByUid: createdByUid || '',
+    isShared: isShared !== undefined ? Boolean(isShared) : true,
     updatedAt: serverTimestamp()
   };
+
+  if (authorEmail && authorEmail !== 'leader@continote.com') songData.authorEmail = authorEmail.toLowerCase().trim();
+  if (authorName && authorName !== '인도자' && authorName !== '찬양인도자') songData.authorName = authorName.trim();
 
   if (compressedDataUrl) {
     songData.imageData = compressedDataUrl;
@@ -287,7 +297,40 @@ export async function addSongMaster({
     createdAt: serverTimestamp()
   }, { merge: true });
 
-  return { id: targetId, title, pHash, imageData: compressedDataUrl, songForm, stickers };
+  return { id: targetId, title, pHash, imageData: compressedDataUrl, songForm, stickers, authorEmail: songData.authorEmail, authorName: songData.authorName, isShared: songData.isShared };
+}
+
+/**
+ * 마스터 곡의 메타정보 또는 송폼을 Firestore에 부분 업데이트 (초경량)
+ */
+export async function updateSongMaster(songId, fields = {}) {
+  if (!songId || !fields || typeof fields !== 'object') return;
+  try {
+    const songRef = doc(db, 'songs', songId);
+    const updateData = {
+      ...fields,
+      updatedAt: serverTimestamp()
+    };
+    if (updateData.title) updateData.title = updateData.title.trim();
+    if (updateData.authorEmail) updateData.authorEmail = updateData.authorEmail.toLowerCase().trim();
+    if (updateData.authorName) updateData.authorName = updateData.authorName.trim();
+    await setDoc(songRef, updateData, { merge: true });
+  } catch (err) {
+    console.warn('[Firebase] 마스터 곡 업데이트 실패:', err);
+  }
+}
+
+/**
+ * 마스터 곡 Firestore 문서 영구 삭제
+ */
+export async function deleteSongMaster(songId) {
+  if (!songId) return;
+  try {
+    const songRef = doc(db, 'songs', songId);
+    await deleteDoc(songRef);
+  } catch (err) {
+    console.warn('[Firebase] 마스터 곡 삭제 실패:', err);
+  }
 }
 
 /**
@@ -305,6 +348,34 @@ export async function getOrganizationSongs(orgId) {
     return timeB - timeA;
   });
   return songs;
+}
+
+/**
+ * 조직 내 마스터 악보 목록 실시간 구독 (onSnapshot)
+ */
+export function subscribeOrganizationSongs(orgId, callback, onError) {
+  if (!orgId) return () => {};
+  try {
+    const songsColl = collection(db, 'songs');
+    const qOrg = query(songsColl, where('orgId', '==', orgId));
+    return onSnapshot(qOrg, (snapshot) => {
+      const results = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      results.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (typeof a.createdAt === 'number' ? a.createdAt : 0);
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (typeof b.createdAt === 'number' ? b.createdAt : 0);
+        return timeB - timeA;
+      });
+      if (typeof callback === 'function') {
+        callback(results);
+      }
+    }, (err) => {
+      console.warn('[Firebase] 마스터 악보 실시간 구독 오류:', err);
+      if (typeof onError === 'function') onError(err);
+    });
+  } catch (err) {
+    console.warn('[Firebase] 마스터 악보 실시간 구독 초기화 실패:', err);
+    return () => {};
+  }
 }
 
 /**
@@ -385,6 +456,8 @@ export async function saveContiSet({
 }) {
   if (!orgId) throw new Error('orgId가 필요합니다.');
 
+  const email = (authorEmail || leaderEmail || '').toLowerCase().trim();
+
   // [1MB 한도 보호] items 배열 내에서 대용량 이미지 DataURL 필드(image, original) 제거하여 문서 크기 최적화(수 KB)
   const sanitizedItems = (items || []).map(s => {
     const { image, original, ...meta } = s;
@@ -399,11 +472,12 @@ export async function saveContiSet({
       themes: s.themes || [],
       order: typeof s.order === 'number' ? s.order : 0,
       songform: Array.isArray(s.songform) ? s.songform : [],
-      stickers: Array.isArray(s.stickers) ? s.stickers : []
+      stickers: Array.isArray(s.stickers) ? s.stickers : [],
+      authorEmail: s.authorEmail || email || '',
+      authorName: s.authorName || leaderName || '인도자',
+      isShared: s.isShared !== undefined ? Boolean(s.isShared) : true
     };
   });
-
-  const email = (authorEmail || leaderEmail || '').toLowerCase().trim();
   const contiData = {
     orgId,
     leaderUid: leaderUid || '',

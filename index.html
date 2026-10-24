@@ -112,6 +112,16 @@
         <span class="hidden sm:inline">악보 추가</span>
       </button>
 
+      <!-- 인도자 전용 리드 시트(멘트/노트) 추가 버튼 -->
+      <button id="songListAddLeadSheetBtn"
+        class="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl border font-semibold text-xs sm:text-sm shadow-sm active:scale-95 transition-all"
+        style="display:none;border-color:var(--border);background:var(--surface-2);color:var(--text)" title="인도자 전용 리드 시트(멘트/노트) 추가">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 text-amber-500 shrink-0">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+        <span class="hidden sm:inline">리드 시트</span>
+      </button>
+
       <!-- 곡 진행 인디케이터 배지 (자물쇠 버튼 좌측 배치) -->
       <div id="navIndicator"
         class="items-center px-2.5 py-1 rounded-full text-xs font-bold border shrink-0 transition-all select-none"
@@ -213,6 +223,26 @@
           <span id="headerUserName"
             class="text-xs font-bold max-w-[60px] sm:max-w-[100px] truncate hidden sm:inline"></span>
         </div>
+        <script>
+          (function() {
+            try {
+              var s = localStorage.getItem('continote_user_session');
+              if (s) {
+                var u = JSON.parse(s);
+                if (u && u.email && u.email !== 'leader@continote.com') {
+                  var loginBtn = document.getElementById('headerGoogleLoginBtn');
+                  var chip = document.getElementById('headerProfileChip');
+                  var nameEl = document.getElementById('headerUserName');
+                  var avatar = document.getElementById('headerUserAvatar');
+                  if (loginBtn) loginBtn.style.display = 'none';
+                  if (chip) chip.style.display = 'flex';
+                  if (nameEl && u.name) nameEl.textContent = u.name.endsWith('님') ? u.name : (u.name + '님');
+                  if (avatar && u.picture) avatar.src = u.picture;
+                }
+              }
+            } catch(e) {}
+          })();
+        </script>
       </div>
     </div>
   </header>
@@ -842,6 +872,16 @@
         <path d="M12 4v16" />
       </svg>
       <span class="hidden sm:inline">텍스트 메모</span>
+    </button>
+
+    <!-- 펜 전용 모드 (Palm Rejection: 손 터치 필기 무시) -->
+    <button id="penStylusOnlyBtn"
+      class="shrink-0 flex items-center gap-1.5 p-2 sm:px-3 sm:py-2 rounded-xl border text-xs sm:text-sm font-semibold active:scale-95 transition-all"
+      style="border-color:var(--border);background:var(--surface-2)" title="펜 전용 모드 (손바닥/손가락 터치 필기 방지)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+        <path d="m18 2 4 4-12 12H6v-4L18 2zM2 22h20" />
+      </svg>
+      <span class="hidden sm:inline">펜 전용</span>
     </button>
   </div>
 
@@ -1832,6 +1872,69 @@
         <button id="chordStickerAddBtn" class="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all"
           style="background:var(--accent)">
           악보에 부착
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       [인도자 전용] 리드 시트 (멘트/노트) 작성/수정 모달
+       ========================================== -->
+  <div id="leadSheetModal" class="app-modal fixed inset-0 z-50 flex items-center justify-center p-4 select-none"
+    style="display:none">
+    <div class="absolute inset-0 modal-backdrop" data-close-lead-sheet-modal></div>
+    <div class="relative w-full max-w-md rounded-2xl p-4 sm:p-5 shadow-2xl z-10 space-y-4"
+      style="background:var(--surface)">
+      <!-- 헤더 -->
+      <div class="flex items-center justify-between border-b pb-2.5" style="border-color:var(--border)">
+        <div class="min-w-0 pr-2">
+          <div class="flex items-center gap-1.5">
+            <span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">인도자 전용</span>
+            <h2 id="leadSheetModalTitle" class="font-bold text-base truncate">리드 시트 작성</h2>
+          </div>
+          <p class="text-xs mt-0.5" style="color:var(--text-dim)">* 오직 나에게만 보이며, 찬양팀원이나 곡 목록에는 공유되지 않습니다.</p>
+        </div>
+        <button data-close-lead-sheet-modal class="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 shrink-0" title="닫기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-5 h-5">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- 제목 -->
+      <div>
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">리드 시트 제목</label>
+        <input id="leadSheetTitleInput" type="text" placeholder="예: 오프닝 멘트 & 기도, 1-2번 곡 연결 멘트..."
+          class="w-full px-3 py-2 rounded-xl border text-sm font-bold outline-none focus:ring-2"
+          style="border-color:var(--border);background:var(--surface-2);color:var(--text)" />
+      </div>
+
+      <!-- 본문 텍스트 -->
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="text-xs font-semibold" style="color:var(--text-dim)">멘트 내용 / 성경 구절 / 기도 제목</label>
+          <div class="flex items-center gap-1 text-xs">
+            <span style="color:var(--text-dim)">크기:</span>
+            <select id="leadSheetFontSizeSelect" class="px-2 py-0.5 rounded-lg border text-xs font-medium outline-none"
+              style="border-color:var(--border);background:var(--surface-2);color:var(--text)">
+              <option value="normal">보통</option>
+              <option value="large" selected>크게 (인도용)</option>
+              <option value="xlarge">아주 크게</option>
+            </select>
+          </div>
+        </div>
+        <textarea id="leadSheetContentInput" rows="7" placeholder="예배 인도 멘트나 성경 말씀, 나눔 포인트 등을 자유롭게 입력하세요.&#10;악보 뷰어에서 깨끗한 노트로 렌더링되며 펜 필기도 가능합니다."
+          class="w-full p-3 rounded-xl border text-sm outline-none focus:ring-2 resize-none"
+          style="border-color:var(--border);background:var(--surface-2);color:var(--text)"></textarea>
+      </div>
+
+      <!-- 하단 버튼 -->
+      <div class="pt-2 border-t flex gap-2" style="border-color:var(--border)">
+        <button data-close-lead-sheet-modal class="flex-1 py-2.5 rounded-xl border font-semibold text-sm"
+          style="border-color:var(--border);background:var(--surface-2)">취소</button>
+        <button id="leadSheetSaveBtn" class="flex-1 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all"
+          style="background:var(--accent)">
+          저장하기
         </button>
       </div>
     </div>

@@ -21,6 +21,71 @@ export function clearCanvases(sheetContainer, baseCanvas, userCanvas) {
 export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds = null) {
   return new Promise((resolve) => {
     if (!song || !baseCanvas || !viewer || !sheetContainer) return resolve();
+
+    // [인도자 전용 리드 시트] 악보 이미지가 없는 깨끗한 노트 용지 렌더링
+    if (song.isLeadSheet) {
+      const areaX = bounds ? bounds.x : 0;
+      const areaY = bounds ? bounds.y : 0;
+      let areaW = bounds ? bounds.w : viewer.clientWidth;
+      let areaH = bounds ? bounds.h : viewer.clientHeight;
+      if (areaW <= 0 || areaH <= 0) return resolve();
+
+      const targetAspect = 3 / 4;
+      const dw = Math.floor(Math.min(areaW * 0.96, areaH * targetAspect));
+      const dh = Math.floor(dw / targetAspect);
+      const dx = areaX + Math.floor((areaW - dw) / 2);
+      const dy = areaY + Math.max(0, Math.floor((areaH - dh) / 2));
+
+      currentSheetRect = { x: dx, y: dy, w: dw, h: dh };
+      sheetContainer.style.left = `${dx}px`;
+      sheetContainer.style.top = `${dy}px`;
+      sheetContainer.style.width = `${dw}px`;
+      sheetContainer.style.height = `${dh}px`;
+
+      const dpr = window.devicePixelRatio || 1;
+      baseCanvas.width = dw * dpr;
+      baseCanvas.height = dh * dpr;
+      baseCanvas.style.width = `${dw}px`;
+      baseCanvas.style.height = `${dh}px`;
+
+      const ctx = baseCanvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const isDark = document.documentElement.classList.contains('dark');
+      ctx.fillStyle = isDark ? '#1E293B' : '#FFFFFF';
+      ctx.fillRect(0, 0, dw, dh);
+
+      ctx.strokeStyle = isDark ? '#334155' : '#E2E8F0';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(1, 1, dw - 2, dh - 2);
+
+      // 상단 헤더 띠 (앰버 톤)
+      const headerH = Math.min(70, Math.floor(dh * 0.1));
+      ctx.fillStyle = isDark ? 'rgba(245, 158, 11, 0.15)' : 'rgba(245, 158, 11, 0.1)';
+      ctx.fillRect(0, 0, dw, headerH);
+      ctx.strokeStyle = isDark ? 'rgba(245, 158, 11, 0.35)' : 'rgba(245, 158, 11, 0.25)';
+      ctx.beginPath();
+      ctx.moveTo(0, headerH);
+      ctx.lineTo(dw, headerH);
+      ctx.stroke();
+
+      // 은은한 줄눈 (Lined Paper)
+      ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)';
+      ctx.lineWidth = 1;
+      const lineStart = headerH + 32;
+      const lineStep = 28;
+      for (let y = lineStart; y < dh - 20; y += lineStep) {
+        ctx.beginPath();
+        ctx.moveTo(16, y);
+        ctx.lineTo(dw - 16, y);
+        ctx.stroke();
+      }
+
+      const sheetScaleRatio = Math.max(0.8, dw / 380);
+      sheetContainer.style.setProperty('--sheet-scale', sheetScaleRatio.toFixed(3));
+      return resolve();
+    }
+
     const img = new Image();
     img.onload = () => {
       const areaX = bounds ? bounds.x : 0;
@@ -128,6 +193,10 @@ export function setupDrawingSystem(userCanvas, onStrokeEnd) {
 
   userCanvas.addEventListener('pointerdown', (e) => {
     if (state.locked || state.activeMenu !== 'user') return;
+    // [Palm Rejection: 펜 전용 모드] 손바닥/손가락 터치(touch) 필기 원천 차단 (오직 pen 및 PC mouse만 허용)
+    if (state.stylusOnly && e.pointerType === 'touch') {
+      return;
+    }
     isDrawing = true;
     userCanvas.setPointerCapture(e.pointerId);
     const pt = getPoint(e);
