@@ -23,7 +23,7 @@ export const state = {
   penColor: '#2B2730',
   penSize: 3,
   eraseMode: false,
-  stylusOnly: false, // 펜 전용 모드 (Palm Rejection: 손바닥/손가락 터치 필기 무시)
+  stylusOnly: true, // 펜 전용 모드 (Palm Rejection: 손바닥/손가락 터치 필기 무시, 기본 활성화)
   stickerStep: 3, // 스티커 크기 단계 (총 7단계, 기본 3단계: 1.0x)
   stickerScale: 1.0, // 송폼/코드 스티커 배율
   viewSheetCount: 2, // 사용자 메뉴 악보 보기: 1 (항상 1곡씩) | 2 (해상도 자동 감지: 가로 2면 / 세로 1면)
@@ -62,7 +62,13 @@ const LS_USER_KEY = 'continote_user_session';
 export function loadPreferences() {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.stylusOnly === undefined) {
+        parsed.stylusOnly = true;
+      }
+      return parsed;
+    }
   } catch (e) {
     console.warn('설정 불러오기 실패:', e);
   }
@@ -75,7 +81,7 @@ export function loadPreferences() {
     stickerScale: 1.0,
     viewSheetCount: 2,
     pageAnim: 'smooth',
-    stylusOnly: false
+    stylusOnly: true
   };
 }
 

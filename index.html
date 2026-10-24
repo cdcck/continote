@@ -18,12 +18,12 @@
   <meta name="apple-mobile-web-app-title" content="ContiNote" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
-  <!-- 다크 모드 깜빡임(FOUC) 방지: 첫 페인트 전 즉시 동기 실행 -->
+  <!-- 다크 모드 & 화면 세션 및 메뉴 테마 깜빡임(FOUC) 방지: 첫 페인트 전 즉시 동기 실행 -->
   <script>
     (function () {
       try {
-        var raw = localStorage.getItem('continote_pref_v3');
-        var pref = raw ? JSON.parse(raw) : null;
+        var rawPref = localStorage.getItem('continote_pref_v3');
+        var pref = rawPref ? JSON.parse(rawPref) : null;
         var theme = (pref && pref.theme) ? pref.theme : 'system';
         var isDark = theme === 'dark' || (theme === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
         if (isDark) {
@@ -33,9 +33,109 @@
           document.documentElement.classList.remove('dark');
           document.documentElement.classList.add('light');
         }
+
+        var rawNav = localStorage.getItem('continote_saved_nav_session');
+        var activeMenu = 'user';
+        var viewLevel = 'contiList';
+        if (rawNav) {
+          var nav = JSON.parse(rawNav);
+          if (nav && nav.activeMenu) {
+            activeMenu = nav.activeMenu;
+            if (activeMenu === 'settings') {
+              viewLevel = 'settings';
+            } else if (activeMenu === 'library') {
+              viewLevel = (nav.viewLevel === 'viewer') ? 'viewer' : 'songLibrary';
+            } else {
+              viewLevel = nav.viewLevel || 'contiList';
+            }
+          }
+        }
+        document.documentElement.setAttribute('data-prehydrate-menu', activeMenu);
+        document.documentElement.setAttribute('data-prehydrate-view', viewLevel);
       } catch (e) {}
     })();
   </script>
+  <style>
+    /* 1. 새로고침 시 초기 뷰 계층 깜빡임(FOUC) 원천 방지 */
+    html[data-prehydrate-view="songList"] #contiListView { display: none !important; }
+    html[data-prehydrate-view="songList"] #songListView { display: block !important; }
+    html[data-prehydrate-view="viewer"] #contiListView { display: none !important; }
+    html[data-prehydrate-view="viewer"] #viewerSection { display: flex !important; }
+    html[data-prehydrate-view="songLibrary"] #contiListView { display: none !important; }
+    html[data-prehydrate-view="songLibrary"] #librarySongListView,
+    html[data-prehydrate-view="songLibrary"] #songLibraryView { display: block !important; }
+    html[data-prehydrate-view="settings"] #contiListView { display: none !important; }
+    html[data-prehydrate-view="settings"] #settingsView { display: block !important; }
+
+    /* 2. 테마 컬러 모드 사전 하이드레이션 (첫 페인트 시 보라색 잔상 원천 차단) */
+    /* [곡 목록(악보 보관함) 탭: 파란색 테마] */
+    html[data-prehydrate-menu="library"] {
+      --accent: #2563EB !important;
+      --accent-soft: rgba(37, 99, 235, 0.15) !important;
+      --header-bg: rgba(239, 246, 255, 0.92) !important;
+      --header-border: rgba(37, 99, 235, 0.22) !important;
+    }
+    html.dark[data-prehydrate-menu="library"] {
+      --accent: #3B82F6 !important;
+      --accent-soft: rgba(59, 130, 246, 0.22) !important;
+      --header-bg: rgba(18, 26, 44, 0.94) !important;
+      --header-border: rgba(59, 130, 246, 0.25) !important;
+    }
+
+    /* [인도자 탭: 주황색 테마] */
+    html[data-prehydrate-menu="leader"] {
+      --accent: #EA580C !important;
+      --accent-soft: rgba(234, 88, 12, 0.15) !important;
+      --header-bg: rgba(255, 247, 237, 0.92) !important;
+      --header-border: rgba(234, 88, 12, 0.22) !important;
+    }
+    html.dark[data-prehydrate-menu="leader"] {
+      --accent: #F97316 !important;
+      --accent-soft: rgba(249, 115, 22, 0.22) !important;
+      --header-bg: rgba(38, 24, 18, 0.94) !important;
+      --header-border: rgba(249, 115, 22, 0.25) !important;
+    }
+
+    /* 3. 하단 네비게이션 액티브 탭 사전 하이드레이션 */
+    html[data-prehydrate-menu="library"] #navSongLibraryBtn {
+      color: var(--accent) !important;
+      border-top: 2px solid var(--accent) !important;
+      background: var(--surface-2) !important;
+    }
+    html[data-prehydrate-menu="library"] #navUserBtn {
+      color: var(--text-dim) !important;
+      border-top: 2px solid transparent !important;
+      background: transparent !important;
+    }
+
+    html[data-prehydrate-menu="leader"] #navLeaderBtn {
+      color: var(--accent) !important;
+      border-top: 2px solid var(--accent) !important;
+      background: var(--surface-2) !important;
+    }
+    html[data-prehydrate-menu="leader"] #navUserBtn {
+      color: var(--text-dim) !important;
+      border-top: 2px solid transparent !important;
+      background: transparent !important;
+    }
+
+    html[data-prehydrate-menu="settings"] #navSettingsBtn {
+      color: var(--accent) !important;
+      border-top: 2px solid var(--accent) !important;
+      background: var(--surface-2) !important;
+    }
+    html[data-prehydrate-menu="settings"] #navUserBtn {
+      color: var(--text-dim) !important;
+      border-top: 2px solid transparent !important;
+      background: transparent !important;
+    }
+
+    html[data-prehydrate-menu="user"] #navUserBtn {
+      color: var(--accent) !important;
+      border-top: 2px solid var(--accent) !important;
+      background: var(--surface-2) !important;
+    }
+  </style>
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -116,7 +216,7 @@
       <button id="songListAddLeadSheetBtn"
         class="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl border font-semibold text-xs sm:text-sm shadow-sm active:scale-95 transition-all"
         style="display:none;border-color:var(--border);background:var(--surface-2);color:var(--text)" title="인도자 전용 리드 시트(멘트/노트) 추가">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 text-amber-500 shrink-0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 text-zinc-600 dark:text-zinc-300 shrink-0">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
         </svg>
         <span class="hidden sm:inline">리드 시트</span>
@@ -130,13 +230,22 @@
         1 / 1
       </div>
 
-      <!-- 악보 뷰어 템포(BPM) 표시 및 메트로놈 클릭 사운드 버튼 -->
+      <!-- 악보 뷰어 템포(BPM) 표시 및 메트로놈 클릭 사운드 버튼 (좌측 곡 / 단일 곡) -->
       <button id="viewerBpmBtn"
         class="items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-bold shrink-0 transition-all select-none active:scale-95 cursor-pointer"
         style="display:none;border-color:var(--border);background:var(--surface-2);color:var(--text)"
         title="메트로놈 소리 재생/정지">
         <span class="text-xs leading-none font-bold" style="color:var(--accent)">♩</span>
         <span id="viewerBpmText">--</span>
+      </button>
+
+      <!-- 2곡 보기 모드 시 우측 곡 템포(BPM) 표시 및 메트로놈 버튼 -->
+      <button id="viewerBpmBtnRight"
+        class="items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-bold shrink-0 transition-all select-none active:scale-95 cursor-pointer"
+        style="display:none;border-color:var(--border);background:var(--surface-2);color:var(--text)"
+        title="우측 곡 메트로놈 소리 재생/정지">
+        <span class="text-xs leading-none font-bold" style="color:var(--accent)">♩</span>
+        <span id="viewerBpmTextRight">--</span>
       </button>
 
       <!-- 보기 / 편집 모드 토글 (모바일: 컴팩트 원버튼, 태블릿 이상: 좌우 스위치 세그먼트 토글) -->
@@ -904,7 +1013,7 @@
     style="border-color:var(--border);background:var(--surface);height:calc(48px + env(safe-area-inset-bottom, 0px));padding-bottom:env(safe-area-inset-bottom, 0px)">
 
     <!-- 1. [사용자 메뉴] -->
-    <button id="navUserBtn" class="nav-btn active flex-1 flex flex-col items-center justify-center py-1 transition-all"
+    <button id="navUserBtn" class="nav-btn flex-1 flex flex-col items-center justify-center py-1 transition-all"
       title="사용자 메뉴" aria-label="사용자 메뉴">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
         stroke-linejoin="round" class="w-5 h-5">
@@ -1889,7 +1998,7 @@
       <div class="flex items-center justify-between border-b pb-2.5" style="border-color:var(--border)">
         <div class="min-w-0 pr-2">
           <div class="flex items-center gap-1.5">
-            <span class="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">인도자 전용</span>
+            <span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700">인도자 전용</span>
             <h2 id="leadSheetModalTitle" class="font-bold text-base truncate">리드 시트 작성</h2>
           </div>
           <p class="text-xs mt-0.5" style="color:var(--text-dim)">* 오직 나에게만 보이며, 찬양팀원이나 곡 목록에는 공유되지 않습니다.</p>
@@ -1943,7 +2052,7 @@
   <!-- ==========================================
        모듈화된 메인 엔트리 스크립트 (ES Module)
        ========================================== -->
-  <script type="module" src="js/app.js?v=20261023_07"></script>
+  <script type="module" src="js/app.js?v=20261024_02"></script>
 </body>
 
 </html>

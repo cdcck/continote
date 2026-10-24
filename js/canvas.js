@@ -24,6 +24,7 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
 
     // [인도자 전용 리드 시트] 악보 이미지가 없는 깨끗한 노트 용지 렌더링
     if (song.isLeadSheet) {
+      baseCanvas.classList.add('leadsheet-canvas');
       const areaX = bounds ? bounds.x : 0;
       const areaY = bounds ? bounds.y : 0;
       let areaW = bounds ? bounds.w : viewer.clientWidth;
@@ -52,39 +53,20 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const isDark = document.documentElement.classList.contains('dark');
-      ctx.fillStyle = isDark ? '#1E293B' : '#FFFFFF';
+      ctx.fillStyle = isDark ? '#18181B' : '#FAFAFA';
       ctx.fillRect(0, 0, dw, dh);
 
-      ctx.strokeStyle = isDark ? '#334155' : '#E2E8F0';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(1, 1, dw - 2, dh - 2);
-
-      // 상단 헤더 띠 (앰버 톤)
-      const headerH = Math.min(70, Math.floor(dh * 0.1));
-      ctx.fillStyle = isDark ? 'rgba(245, 158, 11, 0.15)' : 'rgba(245, 158, 11, 0.1)';
-      ctx.fillRect(0, 0, dw, headerH);
-      ctx.strokeStyle = isDark ? 'rgba(245, 158, 11, 0.35)' : 'rgba(245, 158, 11, 0.25)';
-      ctx.beginPath();
-      ctx.moveTo(0, headerH);
-      ctx.lineTo(dw, headerH);
-      ctx.stroke();
-
-      // 은은한 줄눈 (Lined Paper)
-      ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)';
+      // [제안 2: 노션 & 애플 클린 미니멀] 촌스러운 줄눈/누런 띠 완전 제거, 단정하고 매끄러운 1px 외곽선
+      ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)';
       ctx.lineWidth = 1;
-      const lineStart = headerH + 32;
-      const lineStep = 28;
-      for (let y = lineStart; y < dh - 20; y += lineStep) {
-        ctx.beginPath();
-        ctx.moveTo(16, y);
-        ctx.lineTo(dw - 16, y);
-        ctx.stroke();
-      }
+      ctx.strokeRect(0.5, 0.5, dw - 1, dh - 1);
 
       const sheetScaleRatio = Math.max(0.8, dw / 380);
       sheetContainer.style.setProperty('--sheet-scale', sheetScaleRatio.toFixed(3));
       return resolve();
     }
+
+    baseCanvas.classList.remove('leadsheet-canvas');
 
     const img = new Image();
     img.onload = () => {

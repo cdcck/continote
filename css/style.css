@@ -166,6 +166,55 @@ html.dark #baseCanvasRight {
   filter: invert(1) hue-rotate(180deg);
 }
 
+/* 리드 시트: 노션 & 애플 미니멀 클린 서피스 (캔버스 반전 완전 제외) */
+html.dark #baseCanvas.leadsheet-canvas,
+html.dark #baseCanvasRight.leadsheet-canvas {
+  filter: none !important;
+  background-color: #18181B !important;
+}
+
+#baseCanvas.leadsheet-canvas,
+#baseCanvasRight.leadsheet-canvas {
+  filter: none !important;
+  background-color: #FAFAFA !important;
+}
+
+/* ========================================================
+   [다크 모드 칩 & 뱃지 고대비(High Contrast) 가독성 시스템]
+   ======================================================== */
+.high-contrast-chip {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid transparent;
+}
+html.dark .high-contrast-chip {
+  background: rgba(168, 85, 247, 0.22) !important;
+  color: #E9D5FF !important;
+  border-color: rgba(168, 85, 247, 0.45) !important;
+}
+
+/* 오렌지 악센트(인도자 메뉴) 다크 모드 칩 */
+body[data-color-mode="leader"] .high-contrast-chip {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+html.dark body[data-color-mode="leader"] .high-contrast-chip {
+  background: rgba(249, 115, 22, 0.22) !important;
+  color: #FED7AA !important;
+  border-color: rgba(249, 115, 22, 0.45) !important;
+}
+
+/* 콘티 카드 날짜 및 등록자 칩 다크 모드 가독성 강화 */
+.conti-date-chip {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+html.dark .conti-date-chip {
+  color: #CBD5E1 !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
 /* 스티커 레이어 */
 #stickerLayer,
 #stickerLayerRight {

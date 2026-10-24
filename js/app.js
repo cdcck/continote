@@ -48,7 +48,7 @@ const els = {};
 const DOM_IDS = [
   // 1. 헤더 및 네비게이션
   'backBtn', 'backBtnText', 'headerLogoArea', 'viewerHeaderInfo', 'viewerContiTitle', 'viewerSongTitle',
-  'addContiBtn', 'songListAddBtn', 'songListAddLeadSheetBtn', 'viewerBpmBtn', 'viewerBpmText',
+  'addContiBtn', 'songListAddBtn', 'songListAddLeadSheetBtn', 'viewerBpmBtn', 'viewerBpmText', 'viewerBpmBtnRight', 'viewerBpmTextRight',
   'lockToggleContainer', 'lockBtn', 'lockClosedIcon', 'lockOpenIcon', 'lockBtnLabel',
   'lockSwitch', 'lockSwitchViewBtn', 'lockSwitchEditBtn',
   'viewerLibraryShareBtn', 'viewerLibraryShareLabel',
@@ -346,6 +346,9 @@ export function stopMetronome() {
   }
   if (els.viewerBpmBtn) {
     els.viewerBpmBtn.classList.remove('metronome-playing', 'metronome-tick', 'metronome-tick-downbeat');
+  }
+  if (els.viewerBpmBtnRight) {
+    els.viewerBpmBtnRight.classList.remove('metronome-playing', 'metronome-tick', 'metronome-tick-downbeat');
   }
   if (els.songMetaBpmBtn) {
     els.songMetaBpmBtn.classList.remove('metronome-playing', 'metronome-tick', 'metronome-tick-downbeat');
@@ -872,9 +875,10 @@ function initFirebaseAuth() {
           if (els.orgAdminSectionDivider) hide(els.orgAdminSectionDivider);
         }
 
-        // 즉시 로컬 캐시로 화면 렌더링
-        renderContiListView();
-        applyUIState();
+        // 현재 화면이 콘티 목록일 때만 로컬 캐시 렌더링 (설정/뷰어 등 타 뷰 열람 방해 금지)
+        if (state.viewLevel === 'contiList') {
+          renderContiListView();
+        }
 
         // [실시간 리스너 구독] 조직 내 콘티 세트리스트 실시간 동기화 (곡 추가/순서변경/삭제 시 타 사용자 즉시 반영)
         if (contiSnapshotUnsubscribe) {
@@ -906,14 +910,16 @@ function initFirebaseAuth() {
               syncCloudSongs(profile.orgId)
             ]);
 
-            // 동기화 완료 후 화면 조용히 최신 데이터로 갱신
-            renderContiListView();
-            if (state.viewLevel === 'songList' && state.currentContiId) {
+            // 동기화 완료 후 현재 보고 있는 화면만 조용히 최신 데이터로 갱신
+            if (state.viewLevel === 'contiList') {
+              renderContiListView();
+            } else if (state.viewLevel === 'songList' && state.currentContiId) {
               await loadSongs();
               renderSongListView();
-            }
-            if (state.viewLevel === 'songLibrary') {
+            } else if (state.viewLevel === 'songLibrary') {
               renderSongLibraryView();
+            } else if (state.viewLevel === 'settings') {
+              renderSettingsView();
             }
             applyUIState();
           } catch (syncErr) {
@@ -1136,6 +1142,15 @@ export async function handleCloudContisUpdate(cloudContis, isFullOrgSync = false
           original: preservedOriginal
         };
       });
+
+      // [리드 시트 보존 방어벽] 원격 목록에 리드 시트가 누락된 경우 기존 로컬 리드 시트 순서 보존 병합
+      const localLeadSheets = prevSongs.filter(s => s.isLeadSheet && !mappedSongs.some(m => m.id === s.id));
+      if (localLeadSheets.length > 0) {
+        localLeadSheets.forEach(ls => {
+          const insertIdx = (typeof ls.order === 'number' && ls.order <= mappedSongs.length) ? ls.order : mappedSongs.length;
+          mappedSongs.splice(insertIdx, 0, ls);
+        });
+      }
 
       // 변경 사항 감지 (곡 수, 곡 식별자, 순서, 송폼, 제목, 날짜, 메모)
       const songsChanged = (prevSongs.length !== mappedSongs.length) ||
@@ -1447,9 +1462,8 @@ export function syncContiToFirestore(conti) {
     }
   }
 
-  // [인도자 전용 리드 시트 격리] 팀원에게 공유되는 클라우드 콘티에는 리드 시트(isLeadSheet)를 일체 업로드하지 않음!
+  // 콘티 내 곡 및 인도자 리드 시트(isLeadSheet) 포함 동기화 (팀원 뷰에서는 isLeadSheet가 UI 수준에서 격리 보호됨)
   const enrichedItems = (Array.isArray(conti.songs) ? conti.songs : [])
-    .filter(s => !s.isLeadSheet)
     .map(s => ({
       ...s,
       songId: s.songId || s.masterSongId || s.id,
@@ -1476,7 +1490,7 @@ export function syncContiToFirestore(conti) {
  */
 export async function hydrateContiSongImages(songs) {
   if (!Array.isArray(songs) || songs.length === 0) return false;
-  const missing = songs.filter(s => !s.image);
+  const missing = songs.filter(s => !s.image && !s.isLeadSheet);
   if (missing.length === 0) return false;
 
   const libMap = new Map((state.allSongs || []).map(s => [s.id, s]));
@@ -1540,6 +1554,47 @@ let editingContiId = null;
 let sharingContiId = null;
 const expandedContiGroups = new Set();
 
+function getContiSongsPreview(conti, isLeader) {
+  if (!conti || !Array.isArray(conti.songs) || conti.songs.length === 0) return '';
+  const previewItems = [];
+  let songSeq = 0;
+
+  conti.songs.forEach(s => {
+    if (s.isLeadSheet) {
+      if (isLeader) {
+        previewItems.push(`📝 ${s.name || '리드 시트'}`);
+      }
+    } else {
+      songSeq++;
+      previewItems.push(`${songSeq}. ${s.name || '제목 없음'}`);
+    }
+  });
+
+  return previewItems.join(' | ');
+}
+
+function formatContiCardSummary(conti, isLeader) {
+  const preview = getContiSongsPreview(conti, isLeader);
+  const memo = (conti.memo || '').trim();
+
+  // 1. 등록된 곡 목록이 있는 경우: 스마트 곡 순서 요약 적용 (리드 시트는 번호 제외, 곡만 1부터 번호)
+  if (preview) {
+    // 메모가 없거나, 메모 자체가 수동 곡 번호 텍스트('1. ...')인 경우 스마트 요약으로 정제 대체
+    if (!memo || /^\s*\d+\.\s*/.test(memo)) {
+      return `<p class="text-xs sm:text-sm mt-0.5 line-clamp-1" style="color:var(--text-dim)">${escapeHtml(preview)}</p>`;
+    }
+    // 별도의 전달사항 메모가 있는 경우 함께 깔끔하게 표시
+    return `<p class="text-xs sm:text-sm mt-0.5 line-clamp-1" style="color:var(--text-dim)"><span class="font-medium text-amber-600 dark:text-amber-400">📝 ${escapeHtml(memo)}</span> <span class="opacity-40 mx-1">|</span> ${escapeHtml(preview)}</p>`;
+  }
+
+  // 2. 곡이 아직 없고 메모만 있는 경우
+  if (memo) {
+    return `<p class="text-xs sm:text-sm mt-0.5 line-clamp-1" style="color:var(--text-dim)">${escapeHtml(memo)}</p>`;
+  }
+
+  return '';
+}
+
 function createContiCardElement(conti, isLeader, myEmail) {
   const card = document.createElement('div');
   card.className = 'conti-card p-3 sm:p-3.5 rounded-2xl border transition-all active:scale-[0.99] cursor-pointer flex flex-col gap-1.5 shadow-sm hover:shadow-md';
@@ -1565,47 +1620,48 @@ function createContiCardElement(conti, isLeader, myEmail) {
   }
 
   card.innerHTML = `
-    <!-- 1줄: 날짜 (좌측) 및 등록자 칩 (우측) -->
-    <div class="flex items-center justify-between gap-2 min-w-0">
-      <div class="flex items-center gap-1.5 flex-wrap min-w-0">
-        ${conti.date ? `<span class="px-2 py-0.5 rounded-md text-[11px] font-semibold border shrink-0" style="border-color:var(--border);background:var(--surface-2);color:var(--text-dim)">${escapeHtml(conti.date)}</span>` : ''}
-      </div>
-      ${(!isLeader || !isMine) ? `
-        <!-- 등록자: [이름] 칩 (사용자 메뉴 전체 및 인도자 메뉴의 공유받은 콘티) -->
-        <span class="px-2.5 py-0.5 rounded-md text-xs font-semibold border shrink-0 flex items-center gap-1.5 shadow-2xs" style="border-color:var(--border);background:var(--surface-2);color:var(--text)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5 text-blue-500"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <span style="color:var(--text-dim)">등록자:</span>
-          <strong class="font-bold">${escapeHtml(authorDisplayName)}</strong>
-        </span>
-      ` : ''}
-    </div>
-
-    <!-- 2줄: 콘티 제목 (좌측) & 인도자 전용 액션 버튼들 (우측) -->
-    <div class="flex items-center justify-between gap-3">
-      <div class="min-w-0 flex-1">
-        <h3 class="font-bold text-base sm:text-lg truncate">${escapeHtml(conti.title)}</h3>
-        ${conti.memo ? `<p class="text-xs sm:text-sm mt-0.5 line-clamp-1" style="color:var(--text-dim)">${escapeHtml(conti.memo)}</p>` : ''}
-      </div>
-      ${canManage ? `
-        <div class="shrink-0 flex items-center gap-1.5">
-          <button data-edit-conti="${conti.id}" class="p-1.5 sm:px-2.5 sm:py-1 rounded-xl text-xs font-bold border flex items-center gap-1 shrink-0 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all shadow-sm" style="border-color:var(--border);background:var(--surface-2);color:var(--text)" title="콘티 제목/날짜/메모 수정">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-3.5 h-3.5"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-            <span class="hidden sm:inline">수정</span>
-          </button>
-          <button data-share-conti="${conti.id}" class="p-1.5 sm:px-2.5 sm:py-1 rounded-xl text-xs font-bold border flex items-center gap-1 shrink-0 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all shadow-sm" style="border-color:var(--border);background:var(--surface-2);color:var(--text)" title="찬양팀원에게 공유">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-3.5 h-3.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
-            <span class="hidden sm:inline">공유</span>
-          </button>
-          <button data-delete-conti="${conti.id}" class="p-1.5 rounded-xl text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 active:scale-95 transition-all shrink-0" title="콘티 삭제">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-          </button>
+    <!-- 상단 영역: 모바일에서는 2줄 (날짜 상단, 제목/버튼 하단), 태블릿 이상(sm:)에서는 1줄 인라인 ([날짜] [제목] ... [등록자] [버튼들]) -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-3 min-w-0">
+      <!-- 좌측: 날짜칩 + 제목 (태블릿 이상에서 가로 나란히) -->
+      <div class="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1">
+        ${conti.date ? `<span class="self-start sm:self-auto px-2 py-0.5 rounded-md text-[11px] font-semibold border shrink-0 conti-date-chip select-none">${escapeHtml(conti.date)}</span>` : ''}
+        <div class="min-w-0 flex-1">
+          <h3 class="font-bold text-base sm:text-lg truncate">${escapeHtml(conti.title)}</h3>
+          ${formatContiCardSummary(conti, isLeader)}
         </div>
-      ` : ''}
+      </div>
+
+      <!-- 우측: 등록자 칩 및 기능 버튼들 -->
+      <div class="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+        ${(!isLeader || !isMine) ? `
+          <!-- 등록자: [이름] 칩 -->
+          <span class="px-2.5 py-0.5 rounded-md text-xs font-semibold border shrink-0 flex items-center gap-1.5 shadow-2xs conti-date-chip">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5 text-blue-500"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span style="color:var(--text-dim)">등록자:</span>
+            <strong class="font-bold text-neutral-800 dark:text-neutral-100">${escapeHtml(authorDisplayName)}</strong>
+          </span>
+        ` : ''}
+        ${canManage ? `
+          <div class="shrink-0 flex items-center gap-1.5">
+            <button data-edit-conti="${conti.id}" class="p-1.5 sm:px-2.5 sm:py-1 rounded-xl text-xs font-bold border flex items-center gap-1 shrink-0 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all shadow-sm" style="border-color:var(--border);background:var(--surface-2);color:var(--text)" title="콘티 제목/날짜/메모 수정">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-3.5 h-3.5"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              <span class="hidden sm:inline">수정</span>
+            </button>
+            <button data-share-conti="${conti.id}" class="p-1.5 sm:px-2.5 sm:py-1 rounded-xl text-xs font-bold border flex items-center gap-1 shrink-0 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all shadow-sm" style="border-color:var(--border);background:var(--surface-2);color:var(--text)" title="찬양팀원에게 공유">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-3.5 h-3.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
+              <span class="hidden sm:inline">공유</span>
+            </button>
+            <button data-delete-conti="${conti.id}" class="p-1.5 rounded-xl text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 active:scale-95 transition-all shrink-0" title="콘티 삭제">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+        ` : ''}
+      </div>
     </div>
 
-    <!-- 3줄: n곡 배지 (좌측) & 곡 목록 보기 (우측) -->
+    <!-- 하단 줄: n곡 배지 (좌측) & 곡 목록 보기 (우측) -->
     <div class="pt-2 border-t flex items-center justify-between text-xs" style="border-color:var(--border)">
-      <span class="px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0" style="background:var(--accent-soft);color:var(--accent)">
+      <span class="px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0 high-contrast-chip">
         ${songCount}곡
       </span>
       <span class="font-bold shrink-0 flex items-center gap-1" style="color:var(--accent)">
@@ -1684,6 +1740,9 @@ function createContiGroupCard(groupKey, titleText, countText, items, isLeader, m
 }
 
 export function renderContiListView() {
+  if (state.viewLevel === 'contiList') {
+    saveCurrentMenuSession();
+  }
   if (!els.contiListContainer) return;
   els.contiListContainer.innerHTML = '';
 
@@ -2011,9 +2070,32 @@ function renderContiSessionRow(session = {}) {
   els.contiSessionList.appendChild(row);
 }
 
-function openContiModal(contiId = null) {
+async function openContiModal(contiId = null) {
   editingContiId = contiId;
   if (els.contiSessionList) els.contiSessionList.innerHTML = '';
+
+  // 소속 조직(교회)의 승인된 팀원 명단을 불러와서 세션 드롭다운에 자동 반영
+  if (state.currentUser?.orgId) {
+    try {
+      const approved = await getApprovedMembers(state.currentUser.orgId);
+      if (Array.isArray(approved) && approved.length > 0) {
+        const existingMap = new Map((state.teamMembers || []).map(m => [(m.email || '').toLowerCase(), m]));
+        approved.forEach(u => {
+          const emailKey = (u.email || '').toLowerCase();
+          if (emailKey && !existingMap.has(emailKey)) {
+            existingMap.set(emailKey, {
+              name: u.name || emailKey.split('@')[0],
+              email: u.email,
+              picture: u.picture || ''
+            });
+          }
+        });
+        state.teamMembers = Array.from(existingMap.values()).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+      }
+    } catch (err) {
+      console.warn('[Session] 조직 팀원 명단 조회 대기:', err);
+    }
+  }
 
   if (contiId) {
     const c = state.contis.find(item => item.id === contiId);
@@ -2320,6 +2402,7 @@ export async function saveLeadSheetFromModal() {
     currentConti.songCount = currentConti.songs.length;
     currentConti.updatedAt = Date.now();
     await saveCurrentConti();
+    syncContiToFirestore(currentConti);
     if (hasDriveAuth() && state.currentContiId) {
       syncContiDetailToDrive(state.currentContiId, true);
     }
@@ -2375,22 +2458,26 @@ export function renderLeadSheetOverlay(container, song) {
   else if (song.fontSize === 'xlarge') fontClass = 'text-lg sm:text-2xl leading-relaxed';
 
   overlay.innerHTML = `
-    <!-- 상단 띠 영역 -->
-    <div class="flex items-center justify-between pb-2.5 sm:pb-3 border-b mb-3 sm:mb-5 shrink-0" style="border-color:rgba(245, 158, 11, 0.35)">
-      <div class="flex items-center gap-2 min-w-0">
-        <span class="px-2 py-0.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 shrink-0">📝 리드 시트</span>
-        <h3 class="font-extrabold text-base sm:text-xl truncate text-amber-600 dark:text-amber-400">${escapeHtml(song.name)}</h3>
+    <!-- [제안 2: 노션 & 애플 클린 미니멀] 헤더 영역 -->
+    <div class="flex items-start justify-between pb-3.5 mb-4 border-b shrink-0 border-zinc-200 dark:border-zinc-800">
+      <div class="min-w-0 pr-2">
+        <div class="text-[11px] font-mono font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1 flex items-center gap-1.5">
+          <span>CUE NOTE</span>
+          <span class="text-zinc-300 dark:text-zinc-700">•</span>
+          <span class="font-sans font-medium text-zinc-500 dark:text-zinc-400">인도자 전용</span>
+        </div>
+        <h3 class="font-extrabold text-lg sm:text-2xl tracking-tight truncate text-zinc-900 dark:text-zinc-100">${escapeHtml(song.name)}</h3>
       </div>
-      <button type="button" class="leadsheet-edit-btn px-2.5 py-1 rounded-xl text-xs font-bold border flex items-center gap-1 shrink-0 bg-white/80 dark:bg-slate-800/80 shadow-xs hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all"
-        style="border-color:var(--border);color:var(--text)" title="리드 시트 내용 수정">
+      <button type="button" class="leadsheet-edit-btn px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 shrink-0 bg-white dark:bg-zinc-800/80 border-zinc-300 dark:border-zinc-700/80 text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-all shadow-xs active:scale-95"
+        title="리드 시트 내용 수정">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-        <span>수정</span>
+        <span>편집</span>
       </button>
     </div>
 
-    <!-- 멘트 본문 영역 -->
-    <div class="flex-1 whitespace-pre-wrap font-medium cursor-text ${fontClass}" style="color:var(--text);font-family:inherit">
-      ${escapeHtml(song.content || '(작성된 멘트 내용이 없습니다. 상단 [수정]을 눌러 멘트나 성경 구절을 작성하세요.)')}
+    <!-- [제안 2: 노션 & 애플 클린 미니멀] 본문 영역: 좌측 악센트 인용 라인 & 고가독성 폰트 -->
+    <div class="flex-1 whitespace-pre-wrap font-normal cursor-text ${fontClass} text-zinc-800 dark:text-zinc-200 pl-4 sm:pl-6 border-l-2 border-zinc-300 dark:border-zinc-700 my-1 select-text" style="font-family:inherit">
+      ${escapeHtml(song.content || '(작성된 멘트나 성경 구절이 없습니다. 우측 상단 [편집]을 눌러 내용을 작성하세요.)')}
     </div>
   `;
 
@@ -2407,8 +2494,9 @@ export function renderSongListView() {
   els.songListContainer.innerHTML = '';
 
   const currentConti = getCurrentConti();
+  const pureSongs = state.songs.filter(s => !s.isLeadSheet);
   if (els.songListContiTitle) els.songListContiTitle.textContent = currentConti?.title || '예배 콘티';
-  if (els.songListSongCountBadge) els.songListSongCountBadge.textContent = `${state.songs.length}곡`;
+  if (els.songListSongCountBadge) els.songListSongCountBadge.textContent = `${pureSongs.length}곡`;
   if (els.songListContiDate) els.songListContiDate.textContent = currentConti?.date ? `📅 ${currentConti.date}` : '';
   if (els.songListContiMemo) els.songListContiMemo.textContent = currentConti?.memo ? `📝 ${currentConti.memo}` : '';
 
@@ -2434,22 +2522,26 @@ export function renderSongListView() {
   hide(els.songListEmptyState);
 
   const isLeader = state.activeMenu === 'leader';
+  let songSeq = 0;
 
   state.songs.forEach((song, idx) => {
     // [인도자 전용 리드 시트 격리] 팀원(사용자) 화면에서는 리드 시트를 완전히 숨김!
     if (song.isLeadSheet && !isLeader) return;
 
+    if (!song.isLeadSheet) {
+      songSeq++;
+    }
+
     const row = document.createElement('div');
     row.dataset.index = idx;
 
-    // [리드 시트 전용 카드 UI]
+    // [리드 시트 전용 카드 UI: 노션 & 애플 클린 미니멀]
     if (song.isLeadSheet) {
-      row.className = 'song-card leadsheet-card p-2.5 sm:p-3 rounded-2xl border transition-all flex items-center gap-2.5 sm:gap-3 shadow-sm hover:shadow-md';
-      row.style.borderColor = 'rgba(245, 158, 11, 0.45)';
+      row.className = 'song-card leadsheet-card p-2.5 sm:p-3 rounded-2xl border transition-all flex items-center gap-2.5 sm:gap-3 shadow-sm hover:shadow-md border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-700';
       row.style.backgroundColor = 'var(--surface)';
 
       row.innerHTML = `
-        <div class="drag-handle-area shrink-0 p-1.5 -ml-0.5 rounded-xl text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/20" title="잡고 끌어서 순서 변경">
+        <div class="drag-handle-area shrink-0 p-1.5 -ml-0.5 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/5" title="잡고 끌어서 순서 변경">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" class="w-5 h-5 pointer-events-none">
             <line x1="4" y1="7" x2="20" y2="7" />
             <line x1="4" y1="12" x2="20" y2="12" />
@@ -2458,8 +2550,8 @@ export function renderSongListView() {
         </div>
         <div class="flex-1 min-w-0 cursor-pointer song-content-area py-0.5">
           <div class="flex items-center gap-2 min-w-0">
-            <span class="px-2 py-0.5 rounded-lg text-xs font-bold border shrink-0 bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30">📝 리드 시트</span>
-            <span class="text-sm sm:text-base font-bold truncate whitespace-nowrap flex-1 min-w-0 text-amber-600 dark:text-amber-400">${escapeHtml(song.name)}</span>
+            <span class="px-2 py-0.5 rounded-lg text-xs font-bold border shrink-0 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700">📝 리드 시트</span>
+            <span class="text-sm sm:text-base font-bold truncate whitespace-nowrap flex-1 min-w-0 text-zinc-900 dark:text-zinc-100">${escapeHtml(song.name)}</span>
           </div>
           ${song.content ? `<p class="text-xs mt-1 line-clamp-1" style="color:var(--text-dim)">${escapeHtml(song.content)}</p>` : ''}
         </div>
@@ -2549,16 +2641,16 @@ export function renderSongListView() {
         </div>
         <div class="flex-1 min-w-0 cursor-pointer song-content-area py-0.5">
           <div class="flex items-center gap-2 min-w-0">
-            <span class="px-2 py-0.5 rounded-lg text-xs font-bold border shrink-0" style="border-color:var(--border);background:var(--surface-2);color:var(--accent)">#${idx + 1}</span>
+            <span class="px-2 py-0.5 rounded-lg text-xs font-bold border shrink-0 high-contrast-chip">#${songSeq}</span>
             <span class="text-sm sm:text-base font-bold truncate whitespace-nowrap flex-1 min-w-0">${escapeHtml(song.name)}</span>
-            ${song.key ? `<span class="hidden sm:inline-block text-xs sm:text-sm px-2 py-0.5 rounded-lg font-bold border shrink-0" style="border-color:var(--border);background:var(--surface-2);color:var(--accent)">${escapeHtml(song.key)}</span>` : ''}
-            ${song.tempo ? `<span class="hidden sm:inline-block text-xs sm:text-sm font-semibold text-neutral-500 shrink-0">♩${escapeHtml(song.tempo)}</span>` : ''}
+            ${song.key ? `<span class="hidden sm:inline-block text-xs sm:text-sm px-2 py-0.5 rounded-lg font-bold border shrink-0 high-contrast-chip">${escapeHtml(song.key)}</span>` : ''}
+            ${song.tempo ? `<span class="hidden sm:inline-block text-xs sm:text-sm font-semibold text-neutral-500 dark:text-neutral-400 shrink-0">♩${escapeHtml(song.tempo)}</span>` : ''}
           </div>
           <div class="flex items-center gap-2 mt-1 flex-wrap">
             ${(song.key || song.tempo) ? `
               <div class="flex sm:hidden items-center gap-1.5 shrink-0">
-                ${song.key ? `<span class="text-xs px-1.5 py-0.5 rounded-md font-bold border shrink-0" style="border-color:var(--border);background:var(--surface-2);color:var(--accent)">${escapeHtml(song.key)}</span>` : ''}
-                ${song.tempo ? `<span class="text-xs font-semibold text-neutral-500 shrink-0">♩${escapeHtml(song.tempo)}</span>` : ''}
+                ${song.key ? `<span class="text-xs px-1.5 py-0.5 rounded-md font-bold border shrink-0 high-contrast-chip">${escapeHtml(song.key)}</span>` : ''}
+                ${song.tempo ? `<span class="text-xs font-semibold text-neutral-500 dark:text-neutral-400 shrink-0">♩${escapeHtml(song.tempo)}</span>` : ''}
               </div>
             ` : ''}
             ${song.songform && song.songform.length ? `
@@ -2631,10 +2723,10 @@ export function renderSongListView() {
       row.innerHTML = `
         <div class="flex-1 min-w-0 py-0.5">
           <div class="flex items-center gap-2 min-w-0">
-            <span class="px-2 py-0.5 rounded-lg text-xs font-bold border shrink-0" style="border-color:var(--border);background:var(--surface-2);color:var(--accent)">#${idx + 1}</span>
+            <span class="px-2 py-0.5 rounded-lg text-xs font-bold border shrink-0 high-contrast-chip">#${songSeq}</span>
             <h4 class="text-sm sm:text-base font-bold truncate whitespace-nowrap flex-1 min-w-0">${escapeHtml(song.name)}</h4>
-            ${song.key ? `<span class="text-xs sm:text-sm px-2 py-0.5 rounded-lg font-bold border shrink-0" style="border-color:var(--border);background:var(--surface-2);color:var(--accent)">${escapeHtml(song.key)}</span>` : ''}
-            ${song.tempo ? `<span class="text-xs sm:text-sm font-semibold text-neutral-500 shrink-0">♩${escapeHtml(song.tempo)}</span>` : ''}
+            ${song.key ? `<span class="text-xs sm:text-sm px-2 py-0.5 rounded-lg font-bold border shrink-0 high-contrast-chip">${escapeHtml(song.key)}</span>` : ''}
+            ${song.tempo ? `<span class="text-xs sm:text-sm font-semibold text-neutral-500 dark:text-neutral-400 shrink-0">♩${escapeHtml(song.tempo)}</span>` : ''}
           </div>
           ${song.songform && song.songform.length ? `
             <div class="flex items-center overflow-x-auto no-scrollbar max-w-full py-0.5 mt-1 select-none" title="${escapeHtml(song.songform.join(' > '))}">
@@ -2727,9 +2819,9 @@ export function renderSongLibraryView() {
     });
   }
 
-  // 검색어 및 필터 적용
+  // 검색어 및 필터 적용 (리드 시트는 마스터 악보 보관함에서 완전 격리)
   const query = (els.librarySearchInput?.value || '').trim().toLowerCase();
-  let list = state.allSongs || [];
+  let list = (state.allSongs || []).filter(s => !s.isLeadSheet);
 
   if (query) {
     list = list.filter(s =>
@@ -3260,6 +3352,16 @@ const menuSessions = {
 };
 
 export function saveCurrentMenuSession() {
+  // 1. 메뉴별 viewLevel 유효성 강제 가드
+  if (state.activeMenu === 'settings') {
+    state.viewLevel = 'settings';
+    state.currentContiId = null;
+  } else if (state.activeMenu === 'library') {
+    if (state.viewLevel !== 'viewer') {
+      state.viewLevel = 'songLibrary';
+    }
+  }
+
   if (state.activeMenu && menuSessions[state.activeMenu]) {
     menuSessions[state.activeMenu] = {
       viewLevel: state.viewLevel,
@@ -3269,6 +3371,16 @@ export function saveCurrentMenuSession() {
       viewerReturnView: state.viewerReturnView,
     };
   }
+
+  // settings 탭 세션은 항상 무결성 보장
+  menuSessions.settings = {
+    viewLevel: 'settings',
+    currentContiId: null,
+    currentIndex: 0,
+    locked: true,
+    viewerReturnView: null,
+  };
+
   // 영구 localStorage에 현재 세션 저장 (새로고침 시 100% 동일 화면 복원)
   try {
     const currentNavState = {
@@ -3277,10 +3389,51 @@ export function saveCurrentMenuSession() {
       currentContiId: state.currentContiId || null,
       currentIndex: state.currentIndex || 0,
       locked: state.locked,
-      viewerReturnView: state.viewerReturnView || null
+      viewerReturnView: state.viewerReturnView || null,
+      menuSessions: menuSessions
     };
     localStorage.setItem('continote_saved_nav_session', JSON.stringify(currentNavState));
   } catch (_) {}
+}
+
+export function loadSavedNavSession() {
+  try {
+    const raw = localStorage.getItem('continote_saved_nav_session');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.menuSessions && typeof parsed.menuSessions === 'object') {
+          Object.assign(menuSessions, parsed.menuSessions);
+        }
+
+        // settings 탭 세션 오염 자동 복구
+        menuSessions.settings = {
+          viewLevel: 'settings',
+          currentContiId: null,
+          currentIndex: 0,
+          locked: true,
+          viewerReturnView: null,
+        };
+
+        // 활성 메뉴별 viewLevel 정화 (과거 오염 세션 자동 치유)
+        if (parsed.activeMenu === 'settings') {
+          parsed.viewLevel = 'settings';
+          parsed.currentContiId = null;
+        } else if (parsed.activeMenu === 'library') {
+          if (parsed.viewLevel !== 'viewer') {
+            parsed.viewLevel = 'songLibrary';
+          }
+        }
+
+        // 정화된 데이터를 즉시 재저장하여 오염 영구 치유
+        localStorage.setItem('continote_saved_nav_session', JSON.stringify(parsed));
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('[Session] 세션 복원 데이터 파싱 실패:', e);
+  }
+  return null;
 }
 
 /* ==================================================
@@ -3373,8 +3526,21 @@ async function restoreNavigationState(targetState) {
   state.activeMenu = targetState.activeMenu || 'user';
   state.viewLevel = targetState.viewLevel || 'contiList';
   state.currentContiId = targetState.currentContiId || null;
-  state.currentIndex = targetState.currentIndex || 0;
+  state.currentIndex = typeof targetState.currentIndex === 'number' ? targetState.currentIndex : 0;
   state.viewerReturnView = targetState.viewerReturnView || null;
+  if (typeof targetState.locked === 'boolean') {
+    state.locked = targetState.locked;
+  }
+
+  // 콘티 존재 여부 안전 검증 (삭제된 콘티 폴백 방어)
+  if ((state.viewLevel === 'songList' || (state.viewLevel === 'viewer' && state.viewerReturnView !== 'songLibrary')) && state.currentContiId) {
+    const exists = state.contis && state.contis.some(c => c.id === state.currentContiId);
+    if (!exists) {
+      state.viewLevel = 'contiList';
+      state.currentContiId = null;
+      state.viewerReturnView = null;
+    }
+  }
 
   // UI 가시성 및 뷰어 섹션을 먼저 표시하여 DOM 치수(clientWidth/clientHeight)를 활성화
   applyUIState();
@@ -3396,17 +3562,50 @@ async function restoreNavigationState(targetState) {
     } else if (state.currentContiId) {
       await loadSongs();
     }
-    const song = state.songs[state.currentIndex];
-    if (song && (!(song.id in state.stickersBySong) || !state.stickersBySong[song.id]?.length)) {
-      await loadStickers(song.id);
+
+    if (state.songs && state.songs.length > 0) {
+      if (state.currentIndex >= state.songs.length) {
+        state.currentIndex = Math.max(0, state.songs.length - 1);
+      }
+      const song = state.songs[state.currentIndex];
+      if (song && (!(song.id in state.stickersBySong) || !state.stickersBySong[song.id]?.length)) {
+        await loadStickers(song.id);
+      }
+      const nextSong = isTwoPageViewActive() ? state.songs[state.currentIndex + 1] : null;
+      if (nextSong && (!(nextSong.id in state.stickersBySong) || !state.stickersBySong[nextSong.id]?.length)) {
+        await loadStickers(nextSong.id);
+      }
+      resetZoom();
+      requestAnimationFrame(async () => {
+        await renderAll();
+      });
+    } else {
+      // 악보가 비어있을 경우 안전하게 이전 뷰로 복귀
+      if (state.viewerReturnView === 'songLibrary') {
+        state.viewLevel = 'songLibrary';
+        renderSongLibraryView();
+      } else {
+        state.viewLevel = state.currentContiId ? 'songList' : 'contiList';
+        if (state.viewLevel === 'songList') renderSongListView();
+        else renderContiListView();
+      }
+      applyUIState();
     }
-    resetZoom();
-    requestAnimationFrame(async () => {
-      await renderAll();
-    });
   }
 
   saveCurrentMenuSession();
+
+  try {
+    const currentState = {
+      appDepth: appHistoryDepth,
+      activeMenu: state.activeMenu || 'user',
+      viewLevel: state.viewLevel || 'contiList',
+      currentContiId: state.currentContiId || null,
+      currentIndex: state.currentIndex || 0,
+      viewerReturnView: state.viewerReturnView || null
+    };
+    window.history.replaceState(currentState, '');
+  } catch (_) {}
 }
 
 export function handleDirectBack() {
@@ -3508,6 +3707,8 @@ export async function switchToMenu(targetMenu, isFromHistory = false) {
     });
   }
 
+  saveCurrentMenuSession();
+
   if (!isFromHistory) {
     pushAppState();
   }
@@ -3517,6 +3718,8 @@ export async function switchToMenu(targetMenu, isFromHistory = false) {
    UI 가시성 및 상태 제어
    ================================================== */
 export function applyUIState() {
+  document.documentElement.removeAttribute('data-prehydrate-view');
+  document.documentElement.removeAttribute('data-prehydrate-menu');
   const isDark = isDarkThemeActive();
   document.documentElement.classList.toggle('dark', isDark);
   document.documentElement.classList.toggle('light', !isDark);
@@ -3549,7 +3752,7 @@ export function applyUIState() {
 
   // 뷰어 모드가 아닐 때 뷰어 메트로놈이 실행 중이면 자동 정지 및 전용 버튼 숨김
   if (state.viewLevel !== 'viewer') {
-    if (metronomeActiveBtn === els.viewerBpmBtn) stopMetronome();
+    if (metronomeActiveBtn === els.viewerBpmBtn || metronomeActiveBtn === els.viewerBpmBtnRight) stopMetronome();
     if (els.viewerLibraryShareBtn) hide(els.viewerLibraryShareBtn);
   }
 
@@ -3567,6 +3770,7 @@ export function applyUIState() {
     hide(els.songListAddBtn);
     hide(els.songListAddLeadSheetBtn);
     hide(els.viewerBpmBtn);
+    hide(els.viewerBpmBtnRight);
     hide(els.lockToggleContainer || els.lockBtn);
     hide(els.navIndicator);
 
@@ -3611,6 +3815,7 @@ export function applyUIState() {
       hide(els.songListAddLeadSheetBtn);
     }
     hide(els.viewerBpmBtn);
+    hide(els.viewerBpmBtnRight);
     hide(els.lockToggleContainer || els.lockBtn);
     hide(els.navIndicator);
 
@@ -3635,6 +3840,7 @@ export function applyUIState() {
     hide(els.addContiBtn);
     hide(els.songListAddBtn);
     hide(els.viewerBpmBtn);
+    hide(els.viewerBpmBtnRight);
     hide(els.lockToggleContainer || els.lockBtn);
     hide(els.navIndicator);
 
@@ -3660,6 +3866,7 @@ export function applyUIState() {
     hide(els.songListAddBtn);
     hide(els.songListAddLeadSheetBtn);
     hide(els.viewerBpmBtn);
+    hide(els.viewerBpmBtnRight);
     hide(els.lockToggleContainer || els.lockBtn);
     hide(els.navIndicator);
 
@@ -3691,18 +3898,32 @@ export function applyUIState() {
   } else {
     if (els.viewerContiTitle) els.viewerContiTitle.textContent = currentConti?.title || '예배 콘티';
   }
+  const formatViewerSongTitle = (song, idx) => {
+    if (!song) return '';
+    if (song.isLeadSheet) return `📝 ${song.name || '리드 시트'}`;
+    let pureSeq = 0;
+    for (let i = 0; i <= idx; i++) {
+      if (state.songs[i] && !state.songs[i].isLeadSheet) {
+        pureSeq++;
+      }
+    }
+    return `${pureSeq}. ${song.name || '제목 없음'}`;
+  };
+
   if (els.viewerSongTitle) {
     if (isTwoPageViewActive()) {
       const nextSong = state.songs[state.currentIndex + 1];
       if (currentSong && nextSong) {
-        els.viewerSongTitle.textContent = `${state.currentIndex + 1}. ${currentSong.name} | ${state.currentIndex + 2}. ${nextSong.name}`;
+        const title1 = formatViewerSongTitle(currentSong, state.currentIndex);
+        const title2 = formatViewerSongTitle(nextSong, state.currentIndex + 1);
+        els.viewerSongTitle.textContent = `${title1} | ${title2}`;
       } else if (currentSong) {
-        els.viewerSongTitle.textContent = `${state.currentIndex + 1}. ${currentSong.name}`;
+        els.viewerSongTitle.textContent = formatViewerSongTitle(currentSong, state.currentIndex);
       } else {
         els.viewerSongTitle.textContent = '악보 없음';
       }
     } else {
-      els.viewerSongTitle.textContent = currentSong ? `${state.currentIndex + 1}. ${currentSong.name}` : '악보 없음';
+      els.viewerSongTitle.textContent = currentSong ? formatViewerSongTitle(currentSong, state.currentIndex) : '악보 없음';
     }
     show(els.viewerSongTitle, 'inline');
   }
@@ -3713,22 +3934,49 @@ export function applyUIState() {
   updateStylusUI();
   if (hasSongs) {
     show(els.navIndicator, 'inline-flex');
-    if (currentSong && currentSong.tempo) {
-      if (els.viewerBpmText) els.viewerBpmText.textContent = currentSong.tempo;
+    const isTwo = isTwoPageViewActive();
+    const songLeft = currentSong;
+    const songRight = isTwo ? state.songs[state.currentIndex + 1] : null;
+
+    // 1. 좌측 곡 템포 (단일 곡 모드이거나 2곡 보기 모드의 좌측 악보)
+    if (songLeft && songLeft.tempo) {
+      if (els.viewerBpmText) els.viewerBpmText.textContent = songLeft.tempo;
       if (els.viewerBpmBtn) {
-        els.viewerBpmBtn.title = `템포: ${currentSong.tempo} BPM (클릭하여 소리 듣기)`;
+        els.viewerBpmBtn.title = isTwo
+          ? `[좌측 곡] ${songLeft.name}: ${songLeft.tempo} BPM (클릭하여 소리 듣기)`
+          : `템포: ${songLeft.tempo} BPM (클릭하여 소리 듣기)`;
         show(els.viewerBpmBtn, 'inline-flex');
       }
     } else {
       if (els.viewerBpmText) els.viewerBpmText.textContent = '--';
       if (els.viewerBpmBtn) {
-        els.viewerBpmBtn.title = '설정된 템포(BPM) 없음';
+        els.viewerBpmBtn.title = isTwo ? `[좌측 곡] ${songLeft?.name || '악보'}: 설정된 템포 없음` : '설정된 템포(BPM) 없음';
         show(els.viewerBpmBtn, 'inline-flex');
       }
+    }
+
+    // 2. 우측 곡 템포 (2곡 보기 모드일 때만 활성화)
+    if (isTwo && songRight) {
+      if (songRight.tempo) {
+        if (els.viewerBpmTextRight) els.viewerBpmTextRight.textContent = songRight.tempo;
+        if (els.viewerBpmBtnRight) {
+          els.viewerBpmBtnRight.title = `[우측 곡] ${songRight.name}: ${songRight.tempo} BPM (클릭하여 소리 듣기)`;
+          show(els.viewerBpmBtnRight, 'inline-flex');
+        }
+      } else {
+        if (els.viewerBpmTextRight) els.viewerBpmTextRight.textContent = '--';
+        if (els.viewerBpmBtnRight) {
+          els.viewerBpmBtnRight.title = `[우측 곡] ${songRight.name}: 설정된 템포 없음`;
+          show(els.viewerBpmBtnRight, 'inline-flex');
+        }
+      }
+    } else {
+      hide(els.viewerBpmBtnRight);
     }
   } else {
     hide(els.navIndicator);
     hide(els.viewerBpmBtn);
+    hide(els.viewerBpmBtnRight);
     stopMetronome();
   }
   const isFromLibrary = (state.viewLevel === 'viewer' && state.viewerReturnView === 'songLibrary');
@@ -3991,23 +4239,38 @@ function updateHotspotPositions() {
 }
 
 function updateNavIndicator() {
-  if (els.navIndicator) {
-    if (state.songs.length > 0 && state.viewLevel === 'viewer') {
-      if (isTwoPageViewActive()) {
-        const nextIdx = state.currentIndex + 1;
-        if (nextIdx < state.songs.length) {
-          els.navIndicator.textContent = `${state.currentIndex + 1}-${nextIdx + 1} / ${state.songs.length} 곡`;
-        } else {
-          els.navIndicator.textContent = `${state.currentIndex + 1} / ${state.songs.length} 곡`;
-        }
-      } else {
-        els.navIndicator.textContent = `${state.currentIndex + 1} / ${state.songs.length} 곡`;
-      }
+  if (!els.navIndicator) return;
+  if (state.songs.length > 0 && state.viewLevel === 'viewer') {
+    const curSong = state.songs[state.currentIndex];
+    if (curSong?.isLeadSheet) {
+      els.navIndicator.textContent = '📝 리드 시트';
       show(els.navIndicator, 'inline-flex');
-    } else {
-      els.navIndicator.textContent = '';
-      hide(els.navIndicator);
+      return;
     }
+
+    const pureSongs = state.songs.filter(s => !s.isLeadSheet);
+    const pureTotal = pureSongs.length;
+    let curPureIdx = 0;
+    for (let i = 0; i <= state.currentIndex; i++) {
+      if (state.songs[i] && !state.songs[i].isLeadSheet) {
+        curPureIdx++;
+      }
+    }
+
+    if (isTwoPageViewActive()) {
+      const nextSong = state.songs[state.currentIndex + 1];
+      if (nextSong && !nextSong.isLeadSheet && curPureIdx < pureTotal) {
+        els.navIndicator.textContent = `${curPureIdx}-${curPureIdx + 1} / ${pureTotal} 곡`;
+      } else {
+        els.navIndicator.textContent = `${curPureIdx} / ${pureTotal} 곡`;
+      }
+    } else {
+      els.navIndicator.textContent = `${curPureIdx} / ${pureTotal} 곡`;
+    }
+    show(els.navIndicator, 'inline-flex');
+  } else {
+    els.navIndicator.textContent = '';
+    hide(els.navIndicator);
   }
 }
 
@@ -4063,6 +4326,7 @@ function goPrev() {
     stopMetronome();
     resetZoom();
     state.currentIndex = Math.max(0, state.currentIndex - step);
+    saveCurrentMenuSession();
     renderAll();
     triggerSheetTransition('prev');
   }
@@ -4079,6 +4343,7 @@ function goNext() {
     stopMetronome();
     resetZoom();
     state.currentIndex = Math.min(state.songs.length - 1, state.currentIndex + step);
+    saveCurrentMenuSession();
     renderAll();
     triggerSheetTransition('next');
   }
@@ -4942,6 +5207,8 @@ function renderSongformOrderFlowList() {
    환경 설정 화면 관리 (송폼 라벨, 주제 태그, 테마, 네비게이션)
    ================================================== */
 export function renderSettingsView() {
+  state.viewLevel = 'settings';
+  saveCurrentMenuSession();
   renderSongformManageList();
   renderThemeManageList();
   updateSettingsUIButtons();
@@ -5194,7 +5461,7 @@ function wireEventListeners() {
 
 
 
-  // 헤더 악보 뷰어 템포(BPM) 메트로놈 재생/정지 버튼
+  // 헤더 악보 뷰어 템포(BPM) 메트로놈 재생/정지 버튼 (좌측 곡 / 단일 곡)
   if (els.viewerBpmBtn) {
     els.viewerBpmBtn.addEventListener('click', () => {
       const song = getCurrentSong();
@@ -5205,6 +5472,20 @@ function wireEventListeners() {
       }
       const timeSig = song?.timeSig || '4/4';
       toggleMetronome(tempo, els.viewerBpmBtn, timeSig);
+    });
+  }
+
+  // 2곡 보기 모드 시 우측 곡 템포(BPM) 메트로놈 재생/정지 버튼
+  if (els.viewerBpmBtnRight) {
+    els.viewerBpmBtnRight.addEventListener('click', () => {
+      const songRight = isTwoPageViewActive() ? state.songs[state.currentIndex + 1] : null;
+      const tempo = songRight?.tempo ? parseInt(songRight.tempo, 10) : 0;
+      if (!tempo || tempo < 20 || tempo > 300) {
+        showSyncToast('우측 악보에 설정된 템포(BPM)가 없습니다. 악보 정보에서 템포를 등록해주세요.', 'error');
+        return;
+      }
+      const timeSig = songRight?.timeSig || '4/4';
+      toggleMetronome(tempo, els.viewerBpmBtnRight, timeSig);
     });
   }
 
@@ -6581,8 +6862,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // [FOUC 방지 0ms 선행 레이아웃] 비동기 IndexedDB 로딩 대기 전, 보던 화면 프레임을 동기적으로 즉시 표시!
+  const isShareLink = window.location.hash.startsWith('#share=');
+  const savedNav = !isShareLink ? loadSavedNavSession() : null;
+  if (savedNav) {
+    state.activeMenu = savedNav.activeMenu || 'user';
+    state.viewLevel = savedNav.viewLevel || 'contiList';
+    state.currentContiId = savedNav.currentContiId || null;
+    state.currentIndex = typeof savedNav.currentIndex === 'number' ? savedNav.currentIndex : 0;
+    state.viewerReturnView = savedNav.viewerReturnView || null;
+    if (typeof savedNav.locked === 'boolean') {
+      state.locked = savedNav.locked;
+    }
+  } else {
+    state.viewLevel = 'contiList';
+  }
+  applyUIState(); // 비동기 대기 전 화면 컨테이너(songListView 등) 즉시 가시화!
+
   // 데이터 로드 (로컬 IndexedDB로부터 0.01초 만에 화면 즉시 렌더링)
-  state.viewLevel = 'contiList';
   await loadContis();
   await loadLibrarySongs();
 
@@ -6594,9 +6891,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // 공유 링크로 진입했을 경우 자동 열람 처리
-  const hash = window.location.hash;
-  if (hash.startsWith('#share=')) {
-    const shareId = hash.replace('#share=', '').trim();
+  if (isShareLink) {
+    const shareId = window.location.hash.replace('#share=', '').trim();
     const sharedConti = state.contis.find(c => c.id === shareId);
     if (sharedConti) {
       const myEmail = state.currentUser?.email || 'leader@continote.com';
@@ -6616,8 +6912,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   initBrowserHistory();
   setupPWAInstall();
   registerServiceWorker();
-  renderContiListView();
-  applyUIState();
+
+  // [화면 상태 데이터 주입 및 최종 렌더링]
+  if (savedNav) {
+    await restoreNavigationState(savedNav);
+  } else {
+    renderContiListView();
+    applyUIState();
+  }
 });
 
 /* ==================================================

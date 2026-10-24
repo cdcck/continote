@@ -99,7 +99,7 @@ export async function loadLibrarySongs() {
     const songMap = new Map();
     for (const c of state.contis) {
       for (const s of (c.songs || [])) {
-        if (!s.image) continue;
+        if (!s.image || s.isLeadSheet) continue;
         const key = generateSongKey(s.name, s.key);
         if (!songMap.has(key)) {
           songMap.set(key, {
@@ -350,19 +350,19 @@ export async function saveContis() {
 export function getContiSongCount(c) {
   if (!c) return 0;
   if (Array.isArray(c.songs) && !c._needDetailSync) {
-    return c.songs.length;
+    return c.songs.filter(s => !s.isLeadSheet).length;
   }
   if (c.songCount !== undefined && c.songCount !== null) {
     return Number(c.songCount) || 0;
   }
-  return Array.isArray(c.songs) ? c.songs.length : 0;
+  return Array.isArray(c.songs) ? c.songs.filter(s => !s.isLeadSheet).length : 0;
 }
 
 export async function saveCurrentConti() {
   const current = state.contis.find(c => c.id === state.currentContiId);
   if (current) {
     current.songs = state.songs || [];
-    current.songCount = current.songs.length;
+    current.songCount = current.songs.filter(s => !s.isLeadSheet).length;
     current.updatedAt = Date.now();
     current._needDetailSync = false;
     await idbPut('contis', current);
@@ -389,11 +389,12 @@ export async function deleteConti(contiId) {
     state.songs = [];
   }
 
-  // 콘티를 삭제하더라도 곡은 절대 삭제하지 않고 마스터 악보 보관함(library)에 안전하게 영구 보존
-  if (songsToPreserve.length > 0) {
+  // 콘티를 삭제하더라도 곡은 절대 삭제하지 않고 마스터 악보 보관함(library)에 안전하게 영구 보존 (리드 시트는 보관함 제외)
+  const pureSongsToPreserve = songsToPreserve.filter(s => !s.isLeadSheet);
+  if (pureSongsToPreserve.length > 0) {
     const curLib = await idbGetAll('library');
     const libMap = new Map(curLib.map(s => [s.id, s]));
-    for (const s of songsToPreserve) {
+    for (const s of pureSongsToPreserve) {
       if (!libMap.has(s.id)) {
         await idbPut('library', s);
         state.allSongs.push(s);
