@@ -51,7 +51,8 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, {
       'Content-Type': contentType,
       'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Access-Control-Allow-Origin': '*'
+      'Access-Control-Allow-Origin': '*',
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups'
     });
 
     const stream = fs.createReadStream(filePath);

@@ -37,7 +37,7 @@ import {
 import { computeImageHash, findMatchingSong } from './phash.js';
 import {
   addSongMaster, updateSongMaster, deleteSongMaster, saveSongVersion, getOrganizationSongs, getSongVersions,
-  loginWithGoogle, logoutUser, subscribeAuth, getUserProfile,
+  loginWithGoogle, logoutUser, subscribeAuth, getUserProfile, checkRedirectAuthResult,
   getOrganizationList, createOrganization, requestJoinOrganization,
   getPendingUsers, approveUser, getApprovedMembers, saveContiSet, getOrganizationContis,
   getSongById, getContiById, deleteContiSet, subscribeOrganizationContis, subscribeOrganizationSongs
@@ -828,6 +828,7 @@ let songSnapshotUnsubscribe = null;
  * Firebase Auth 상태 구독 및 자동 세션 관리
  */
 function initFirebaseAuth() {
+  checkRedirectAuthResult().catch(err => console.warn('리다이렉트 인증 결과 대기 무시:', err));
   subscribeAuth(async (user) => {
     currentAuthUser = user;
     if (user) {
