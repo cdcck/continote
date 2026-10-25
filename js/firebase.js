@@ -8,8 +8,6 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
   signOut,
   onAuthStateChanged
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
@@ -114,20 +112,15 @@ export async function compressSheetImage(imageSource, maxDimension = 1500, quali
 // [3] Authentication & Organization Flow
 // ==========================================
 
-/** 구글 로그인 (안정적인 리다이렉트 방식: COOP 및 팝업 차단 원천 제거) */
+/** 구글 로그인 팝업 */
 export async function loginWithGoogle() {
-  await signInWithRedirect(auth, googleProvider);
+  const result = await signInWithPopup(auth, googleProvider);
+  return result.user;
 }
 
-/** 리다이렉트 로그인 결과 확인 */
+/** 리다이렉트 잔재 정리용 호환 함수 (no-op) */
 export async function checkRedirectAuthResult() {
-  try {
-    const result = await getRedirectResult(auth);
-    return result ? result.user : null;
-  } catch (err) {
-    console.error('리다이렉트 인증 결과 처리 오류:', err);
-    return null;
-  }
+  return null;
 }
 
 /** 로그아웃 */

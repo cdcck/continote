@@ -635,10 +635,15 @@ async function handleLoginClick() {
     const user = await loginWithGoogle();
     currentAuthUser = user;
   } catch (err) {
-    if (err.code !== 'auth/popup-closed-by-user') {
-      console.error('Google 로그인 오류:', err);
-      alert('로그인 중 오류가 발생했습니다: ' + err.message);
+    if (err.code === 'auth/popup-closed-by-user') {
+      return;
     }
+    if (err.code === 'auth/popup-blocked') {
+      alert('브라우저에서 로그인 팝업 창이 차단되었습니다.\n주소창 오른쪽의 [팝업 차단 해제] 아이콘을 눌러 팝업을 허용해 주세요.');
+      return;
+    }
+    console.error('Google 로그인 오류:', err);
+    alert('로그인 중 오류가 발생했습니다: ' + err.message);
   }
 }
 
