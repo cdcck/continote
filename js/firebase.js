@@ -35,9 +35,7 @@ import {
 // ==========================================
 export const firebaseConfig = {
   apiKey: "AIzaSyA9mYZvKTlDgswQctnEL03CmaFit5RgUcg",
-  authDomain: (typeof window !== 'undefined' && window.location.hostname && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1'))
-    ? window.location.hostname
-    : "continote-cc.firebaseapp.com",
+  authDomain: "continote-cc.firebaseapp.com",
   projectId: "continote-cc",
   storageBucket: "continote-cc.firebasestorage.app",
   messagingSenderId: "389532117634",
