@@ -20,3 +20,11 @@
     X-Frame-Options = "DENY"
     X-XSS-Protection = "1; mode=block"
     Cross-Origin-Opener-Policy = "same-origin-allow-popups"
+
+# Firebase Auth Proxy Rewrite (Same-Origin OAuth)
+[[redirects]]
+  from = "/__/auth/*"
+  to = "https://continote-cc.firebaseapp.com/__/auth/:splat"
+  status = 200
+  force = true
+
