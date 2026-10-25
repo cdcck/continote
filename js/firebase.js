@@ -114,23 +114,9 @@ export async function compressSheetImage(imageSource, maxDimension = 1500, quali
 // [3] Authentication & Organization Flow
 // ==========================================
 
-/** 구글 로그인 (팝업 기본, 차단/오류 시 리다이렉트 폴백) */
+/** 구글 로그인 (안정적인 리다이렉트 방식: COOP 및 팝업 차단 원천 제거) */
 export async function loginWithGoogle() {
-  try {
-    const result = await signInWithPopup(auth, googleProvider);
-    return result.user;
-  } catch (err) {
-    if (
-      err.code === 'auth/popup-blocked' ||
-      err.code === 'auth/cancelled-popup-request' ||
-      err.code === 'auth/internal-error'
-    ) {
-      console.warn('팝업 차단 또는 브라우저 정책 감지, 리다이렉트 로그인으로 자동 전환합니다:', err);
-      await signInWithRedirect(auth, googleProvider);
-      return null;
-    }
-    throw err;
-  }
+  await signInWithRedirect(auth, googleProvider);
 }
 
 /** 리다이렉트 로그인 결과 확인 */
