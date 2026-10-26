@@ -837,5 +837,29 @@ html.dark #viewer::-webkit-scrollbar-thumb:hover {
   animation: sheetSlideInPrevV 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* ========================================================
+   [2면 편집 모드: 포커스 & 비활성 악보 스마트 디밍 시스템]
+   ======================================================== */
+.sheet-container-slot {
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), filter 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+}
+
+.sheet-container-slot.sheet-slot-dimmed {
+  opacity: 0.42;
+  filter: brightness(0.65) contrast(0.95);
+  cursor: pointer !important;
+  user-select: none;
+}
+
+.sheet-container-slot.sheet-slot-dimmed:hover {
+  opacity: 0.65;
+  filter: brightness(0.82) contrast(0.98);
+}
+
+.sheet-container-slot.sheet-slot-active {
+  opacity: 1;
+  filter: none;
+}
+
 
 

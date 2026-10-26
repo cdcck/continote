@@ -1260,9 +1260,9 @@ export async function handleCloudContisUpdate(cloudContis, isFullOrgSync = false
         if (hydrated && state.viewLevel === 'songList') renderSongListView();
       });
     } else if (state.viewLevel === 'viewer' && currentContiSongsUpdated) {
-      renderViewerSong();
+      renderAll();
       hydrateContiSongImages(state.songs).then(hydrated => {
-        if (hydrated && state.viewLevel === 'viewer') renderViewerSong();
+        if (hydrated && state.viewLevel === 'viewer') renderAll();
       });
     }
   }
@@ -1410,7 +1410,7 @@ export async function handleCloudSongsUpdate(cloudSongs) {
         if (state.viewLevel === 'songList') {
           renderSongListView();
         } else if (state.viewLevel === 'viewer') {
-          renderViewerSong();
+          renderAll();
         }
       }
     }
@@ -2617,7 +2617,7 @@ export function renderSongListView() {
       });
 
       row.querySelector('.song-content-area')?.addEventListener('click', () => {
-        openViewer(idx);
+        openViewerForSong(idx);
       });
       row.querySelector('[data-edit-leadsheet]')?.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -3181,19 +3181,67 @@ export function isTwoPageViewActive() {
   const viewerH = (els.viewer && els.viewer.clientHeight > 0) ? els.viewer.clientHeight : window.innerHeight;
   // 해상도 비율 감지: 가로가 더 긴 경우(가로 모드)에만 2면 활성화, 세로가 더 길면(세로 모드) 1면만 표시
   const isLandscape = viewerW > viewerH;
-  return state.activeMenu === 'user' && (state.viewSheetCount === 2) && isLandscape && (viewerW >= 640) && (state.songs.length > 1);
+  // 사용자 메뉴이거나, 인도자 메뉴일 때(가로 모드 + 2면 설정 + 640px 이상) 2면 뷰어 활성화 (보기/편집 모두 2면 유지!)
+  const isEligibleMenu = (state.activeMenu === 'user') || (state.activeMenu === 'leader');
+  return isEligibleMenu && (state.viewSheetCount === 2) && isLandscape && (viewerW >= 640) && (state.songs.length > 1);
+}
+
+/** 2면 편집 시 현재 활성화(포커스)된 슬롯의 곡 데이터 및 컨테이너 반환 */
+export function getActiveTwoPageEditing() {
+  const isTwo = isTwoPageViewActive();
+  const slot = (isTwo && state.activeTwoPageSlot === 'right') ? 'right' : 'left';
+  const songIndex = (slot === 'right') ? state.currentIndex + 1 : state.currentIndex;
+  const song = state.songs[songIndex] || null;
+  const container = (slot === 'right' && els.sheetContainerRight) ? els.sheetContainerRight : els.sheetContainer;
+  const stickerLayer = (slot === 'right' && els.stickerLayerRight) ? els.stickerLayerRight : els.stickerLayer;
+  return { isTwo, slot, songIndex, song, container, stickerLayer };
+}
+
+/** 2면 편집 시 비활성 악보 스마트 디밍 클래스 제어 */
+export function applyTwoPageDimming() {
+  if (!els.sheetContainer) return;
+  els.sheetContainer.classList.add('sheet-container-slot');
+  if (els.sheetContainerRight) els.sheetContainerRight.classList.add('sheet-container-slot');
+
+  const isTwo = isTwoPageViewActive();
+  const isEditing = !state.locked && (state.activeMenu === 'leader' || state.viewerReturnView === 'songLibrary');
+
+  if (isTwo && isEditing) {
+    if (state.activeTwoPageSlot === 'right') {
+      els.sheetContainer.classList.add('sheet-slot-dimmed');
+      els.sheetContainer.classList.remove('sheet-slot-active');
+      if (els.sheetContainerRight) {
+        els.sheetContainerRight.classList.remove('sheet-slot-dimmed');
+        els.sheetContainerRight.classList.add('sheet-slot-active');
+      }
+    } else {
+      els.sheetContainer.classList.remove('sheet-slot-dimmed');
+      els.sheetContainer.classList.add('sheet-slot-active');
+      if (els.sheetContainerRight) {
+        els.sheetContainerRight.classList.add('sheet-slot-dimmed');
+        els.sheetContainerRight.classList.remove('sheet-slot-active');
+      }
+    }
+  } else {
+    // 보기 모드이거나 1면 모드일 때는 디밍 해제
+    els.sheetContainer.classList.remove('sheet-slot-dimmed', 'sheet-slot-active');
+    if (els.sheetContainerRight) {
+      els.sheetContainerRight.classList.remove('sheet-slot-dimmed', 'sheet-slot-active');
+    }
+  }
 }
 
 export async function openViewerForSong(songIndex) {
   stopMetronome();
+  state.viewLevel = 'viewer';
+  state.viewerReturnView = null;
+  state.locked = true; // 뷰어 진입 시 기본은 보기 상태(locked)
   if (isTwoPageViewActive()) {
     // 2곡 보기 모드에서는 책 펼침 양면 페어(1-2, 3-4, 5-6...) 기준 짝수 인덱스로 정렬
     state.currentIndex = Math.floor(songIndex / 2) * 2;
   } else {
     state.currentIndex = songIndex;
   }
-  state.viewLevel = 'viewer';
-  state.locked = true;
   isViewerDirty = false;
   saveCurrentMenuSession();
   const song = state.songs[state.currentIndex];
@@ -3366,6 +3414,11 @@ export function saveCurrentMenuSession() {
     if (state.viewLevel !== 'viewer') {
       state.viewLevel = 'songLibrary';
     }
+  } else if (state.activeMenu === 'user' || state.activeMenu === 'leader') {
+    if (state.viewLevel === 'songLibrary' || state.viewLevel === 'settings') {
+      state.viewLevel = 'contiList';
+      state.currentContiId = null;
+    }
   }
 
   if (state.activeMenu && menuSessions[state.activeMenu]) {
@@ -3386,6 +3439,14 @@ export function saveCurrentMenuSession() {
     locked: true,
     viewerReturnView: null,
   };
+
+  // user / leader 탭 세션 오염 방지
+  ['user', 'leader'].forEach(m => {
+    if (menuSessions[m] && (menuSessions[m].viewLevel === 'songLibrary' || menuSessions[m].viewLevel === 'settings')) {
+      menuSessions[m].viewLevel = 'contiList';
+      menuSessions[m].currentContiId = null;
+    }
+  });
 
   // 영구 localStorage에 현재 세션 저장 (새로고침 시 100% 동일 화면 복원)
   try {
@@ -3421,6 +3482,14 @@ export function loadSavedNavSession() {
           viewerReturnView: null,
         };
 
+        // user / leader 세션 오염 자동 치유
+        ['user', 'leader'].forEach(m => {
+          if (menuSessions[m] && (menuSessions[m].viewLevel === 'songLibrary' || menuSessions[m].viewLevel === 'settings')) {
+            menuSessions[m].viewLevel = 'contiList';
+            menuSessions[m].currentContiId = null;
+          }
+        });
+
         // 활성 메뉴별 viewLevel 정화 (과거 오염 세션 자동 치유)
         if (parsed.activeMenu === 'settings') {
           parsed.viewLevel = 'settings';
@@ -3428,6 +3497,11 @@ export function loadSavedNavSession() {
         } else if (parsed.activeMenu === 'library') {
           if (parsed.viewLevel !== 'viewer') {
             parsed.viewLevel = 'songLibrary';
+          }
+        } else if (parsed.activeMenu === 'user' || parsed.activeMenu === 'leader') {
+          if (parsed.viewLevel === 'songLibrary' || parsed.viewLevel === 'settings') {
+            parsed.viewLevel = 'contiList';
+            parsed.currentContiId = null;
           }
         }
 
@@ -3674,6 +3748,10 @@ export async function switchToMenu(targetMenu, isFromHistory = false) {
   // 3. 대상 메뉴의 이전 세션 복원
   const session = menuSessions[targetMenu];
   if (session) {
+    if ((targetMenu === 'user' || targetMenu === 'leader') && (session.viewLevel === 'songLibrary' || session.viewLevel === 'settings')) {
+      session.viewLevel = 'contiList';
+      session.currentContiId = null;
+    }
     state.viewLevel = session.viewLevel;
     state.currentContiId = session.currentContiId;
     state.currentIndex = session.currentIndex;
@@ -3922,7 +4000,16 @@ export function applyUIState() {
       if (currentSong && nextSong) {
         const title1 = formatViewerSongTitle(currentSong, state.currentIndex);
         const title2 = formatViewerSongTitle(nextSong, state.currentIndex + 1);
-        els.viewerSongTitle.textContent = `${title1} | ${title2}`;
+        const isEditing = !state.locked && (state.activeMenu === 'leader' || state.viewerReturnView === 'songLibrary');
+        if (isEditing) {
+          if (state.activeTwoPageSlot === 'right') {
+            els.viewerSongTitle.innerHTML = `<span style="opacity:0.45">${title1}</span> | <span style="color:var(--accent);font-weight:700;">[편집중] ${title2}</span>`;
+          } else {
+            els.viewerSongTitle.innerHTML = `<span style="color:var(--accent);font-weight:700;">[편집중] ${title1}</span> | <span style="opacity:0.45">${title2}</span>`;
+          }
+        } else {
+          els.viewerSongTitle.textContent = `${title1} | ${title2}`;
+        }
       } else if (currentSong) {
         els.viewerSongTitle.textContent = formatViewerSongTitle(currentSong, state.currentIndex);
       } else {
@@ -4054,6 +4141,7 @@ export function applyUIState() {
   els.userCanvas.style.visibility = hasSongs ? 'visible' : 'hidden';
   if (els.baseCanvasRight) els.baseCanvasRight.style.visibility = hasSongs ? 'visible' : 'hidden';
   if (els.userCanvasRight) els.userCanvasRight.style.visibility = hasSongs ? 'visible' : 'hidden';
+  applyTwoPageDimming();
 
   const nextSongForSf = isTwoPageViewActive() ? state.songs[state.currentIndex + 1] : null;
   const hasSongform = (currentSong && currentSong.songform && currentSong.songform.length > 0) ||
@@ -4444,7 +4532,13 @@ function renderSongformStickyChips() {
       if (canEditSong) {
         flowWrap.classList.add('cursor-pointer', 'hover:opacity-85');
         flowWrap.title = '탭하여 송폼 진행 순서(Flow) 편집';
-        flowWrap.addEventListener('click', () => openSongformOrderModal());
+        flowWrap.addEventListener('click', () => {
+          if (isTwoPage) {
+            state.activeTwoPageSlot = isRightSlot ? 'right' : 'left';
+            applyUIState();
+          }
+          openSongformOrderModal(targetSong);
+        });
       }
       col.appendChild(flowWrap);
     } else if (canEditSong && !state.locked) {
@@ -4453,7 +4547,13 @@ function renderSongformStickyChips() {
       emptyBtn.style.borderColor = 'var(--border)';
       emptyBtn.style.color = 'var(--text-dim)';
       emptyBtn.innerHTML = `<span>+ 송폼 순서</span>`;
-      emptyBtn.addEventListener('click', () => openSongformOrderModal());
+      emptyBtn.addEventListener('click', () => {
+        if (isTwoPage) {
+          state.activeTwoPageSlot = isRightSlot ? 'right' : 'left';
+          applyUIState();
+        }
+        openSongformOrderModal(targetSong);
+      });
       col.appendChild(emptyBtn);
     } else {
       // 송폼이 없는 곡: 높이만 유지하여 레이아웃이 비틀어지지 않게 깔끔한 빈 공간 유지
@@ -4536,13 +4636,13 @@ function placeSongformSticker(label) {
     state.locked = false;
     applyUIState();
   }
-  const song = state.songs[state.currentIndex];
+  const { song, container, stickerLayer } = getActiveTwoPageEditing();
   if (!song) {
     alert('먼저 악보를 등록해주세요.');
     return;
   }
   const list = state.stickersBySong[song.id] || (state.stickersBySong[song.id] = []);
-  const { x, y } = getViewportCenterStickerCoord(els.sheetContainer, list);
+  const { x, y } = getViewportCenterStickerCoord(container, list);
   list.push({
     id: crypto.randomUUID(),
     type: 'songform',
@@ -4552,7 +4652,7 @@ function placeSongformSticker(label) {
   });
   saveStickers(song.id);
   markViewerDirty();
-  renderStickerLayer(els.stickerLayer, els.sheetContainer, song.id);
+  renderStickerLayer(stickerLayer, container, song.id);
   if (hasDriveAuth()) {
     if (state.currentContiId) {
       debounceSyncContiDetail(state.currentContiId);
@@ -4564,7 +4664,7 @@ function placeSongformSticker(label) {
 
 function openChordModal() {
   if (state.activeMenu !== 'leader' && state.viewerReturnView !== 'songLibrary') return;
-  const song = state.songs[state.currentIndex];
+  const { song } = getActiveTwoPageEditing();
   if (!song) {
     alert('먼저 악보를 등록해주세요.');
     return;
@@ -4602,13 +4702,13 @@ function placeChordSticker(chordText) {
     alert('코드 텍스트를 입력해주세요.');
     return;
   }
-  const song = state.songs[state.currentIndex];
+  const { song, container, stickerLayer } = getActiveTwoPageEditing();
   if (!song) {
     alert('먼저 악보를 등록해주세요.');
     return;
   }
   const list = state.stickersBySong[song.id] || (state.stickersBySong[song.id] = []);
-  const { x, y } = getViewportCenterStickerCoord(els.sheetContainer, list);
+  const { x, y } = getViewportCenterStickerCoord(container, list);
   list.push({
     id: crypto.randomUUID(),
     type: 'chord',
@@ -4618,7 +4718,7 @@ function placeChordSticker(chordText) {
   });
   saveStickers(song.id);
   markViewerDirty();
-  renderStickerLayer(els.stickerLayer, els.sheetContainer, song.id);
+  renderStickerLayer(stickerLayer, container, song.id);
   if (hasDriveAuth()) {
     if (state.currentContiId) {
       debounceSyncContiDetail(state.currentContiId);
@@ -5130,13 +5230,15 @@ function renderSongMetaThemesContainer(initialThemes = []) {
    송폼 진행 순서(Flow) 모달
    ================================================== */
 let currentOrderFlow = [];
+let currentOrderSong = null;
 
-function openSongformOrderModal() {
-  const song = state.songs[state.currentIndex];
+function openSongformOrderModal(targetSong = null) {
+  const song = targetSong || getActiveTwoPageEditing().song;
   if (!song) {
     alert('먼저 악보를 등록해주세요.');
     return;
   }
+  currentOrderSong = song;
   els.songformOrderSongTitle.textContent = `현재 곡: ${song.name}`;
   currentOrderFlow = Array.isArray(song.songform) ? [...song.songform] : [];
 
@@ -5180,6 +5282,60 @@ function addSongformStep(step) {
   renderSongformOrderFlowList();
 }
 
+function calculateSongformDropSlot(clientX, clientY, chipEls) {
+  if (!chipEls.length) return 0;
+
+  const chipsWithInfo = chipEls.map((el, i) => {
+    const r = el.getBoundingClientRect();
+    let vDist = 0;
+    if (clientY < r.top) vDist = r.top - clientY;
+    else if (clientY > r.bottom) vDist = clientY - r.bottom;
+    return { el, index: i, rect: r, vDist };
+  });
+
+  const minVDist = Math.min(...chipsWithInfo.map(c => c.vDist));
+  const rowChips = chipsWithInfo.filter(c => c.vDist <= minVDist + 12);
+  if (!rowChips.length) return chipEls.length;
+
+  rowChips.sort((a, b) => a.rect.left - b.rect.left);
+  const firstInRow = rowChips[0];
+  const lastInRow = rowChips[rowChips.length - 1];
+
+  if (clientX <= firstInRow.rect.left + firstInRow.rect.width * 0.4) {
+    return firstInRow.index;
+  }
+  if (clientX >= lastInRow.rect.right - lastInRow.rect.width * 0.4) {
+    return lastInRow.index + 1;
+  }
+
+  let slot = firstInRow.index;
+  for (const c of rowChips) {
+    const midX = c.rect.left + c.rect.width / 2;
+    if (clientX >= midX) {
+      slot = c.index + 1;
+    }
+  }
+  return Math.max(0, Math.min(chipEls.length, slot));
+}
+
+function updateSongformDropIndicator(slot, chipEls, dropIndicator) {
+  if (!dropIndicator || !els.songformFlowList) return;
+  if (slot <= 0) {
+    if (els.songformFlowList.firstChild !== dropIndicator) {
+      els.songformFlowList.insertBefore(dropIndicator, els.songformFlowList.firstChild);
+    }
+  } else if (slot >= chipEls.length) {
+    if (els.songformFlowList.lastChild !== dropIndicator) {
+      els.songformFlowList.appendChild(dropIndicator);
+    }
+  } else {
+    const target = chipEls[slot];
+    if (target && target.previousSibling !== dropIndicator && target !== dropIndicator) {
+      els.songformFlowList.insertBefore(dropIndicator, target);
+    }
+  }
+}
+
 function renderSongformOrderFlowList() {
   els.songformFlowList.innerHTML = '';
   if (!currentOrderFlow.length) {
@@ -5189,20 +5345,146 @@ function renderSongformOrderFlowList() {
   currentOrderFlow.forEach((step, idx) => {
     const isI = (step === 'I');
     const chip = document.createElement('span');
-    chip.className = `inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold shadow-sm cursor-pointer hover:opacity-85 active:scale-95 transition-all ${isI ? 'part-serif-i' : ''}`;
+    chip.className = `songform-flow-chip inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold shadow-sm cursor-grab active:cursor-grabbing hover:opacity-90 active:scale-95 transition-all select-none ${isI ? 'part-serif-i' : ''}`;
     chip.style.backgroundColor = 'var(--accent)';
     chip.style.color = '#ffffff';
-    chip.innerHTML = `<span>${escapeHtml(step)}</span><span class="text-[10px] opacity-75 font-normal ml-0.5">×</span>`;
-    chip.title = '탭하여 이 파트 삭제';
-    chip.addEventListener('click', () => {
+    chip.style.touchAction = 'none';
+    chip.style.userSelect = 'none';
+    chip.style.webkitUserSelect = 'none';
+    chip.dataset.flowIndex = idx;
+    chip.title = '꾹 눌러 순서 변경 · 탭하여 삭제';
+    chip.innerHTML = `<span>${escapeHtml(step)}</span><span class="text-[10px] opacity-75 font-normal ml-0.5 pointer-events-none">×</span>`;
+
+    let isDragging = false;
+    let hasDragged = false;
+    let holdTimer = null;
+    let ghostEl = null;
+    let dropIndicator = null;
+    let targetSlot = idx;
+    let pointerId = null;
+    let startX = 0, startY = 0;
+
+    const startDrag = () => {
+      if (isDragging) return;
+      isDragging = true;
+      hasDragged = true;
+      if (navigator.vibrate) {
+        try { navigator.vibrate(35); } catch (_) {}
+      }
+
+      chip.style.opacity = '0.35';
+      chip.style.transform = 'scale(0.92)';
+
+      ghostEl = document.createElement('div');
+      ghostEl.className = `fixed pointer-events-none z-[99999] px-3.5 py-1.5 rounded-full text-xs font-bold shadow-2xl flex items-center gap-1.5 select-none ${isI ? 'part-serif-i' : ''}`;
+      ghostEl.style.backgroundColor = 'var(--accent)';
+      ghostEl.style.color = '#ffffff';
+      ghostEl.style.boxShadow = '0 10px 25px -4px rgba(0, 0, 0, 0.45), 0 0 16px var(--accent)';
+      ghostEl.style.transform = 'translate(-50%, -50%) scale(1.15)';
+      ghostEl.style.left = `${startX}px`;
+      ghostEl.style.top = `${startY}px`;
+      ghostEl.style.transition = 'transform 0.08s ease-out';
+      ghostEl.innerHTML = `<span>${escapeHtml(step)}</span><span class="text-[10px] opacity-90 font-mono">⠿</span>`;
+      document.body.appendChild(ghostEl);
+
+      dropIndicator = document.createElement('div');
+      dropIndicator.className = 'songform-drop-indicator shrink-0 inline-flex items-center justify-center';
+      dropIndicator.innerHTML = '<span class="w-1.5 h-6 rounded-full animate-pulse shadow-md" style="background:var(--accent);box-shadow:0 0 10px var(--accent)"></span>';
+      dropIndicator.style.margin = '0 4px';
+
+      const chipEls = Array.from(els.songformFlowList.querySelectorAll('.songform-flow-chip'));
+      updateSongformDropIndicator(idx, chipEls, dropIndicator);
+    };
+
+    const onPointerDown = (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      isDragging = false;
+      hasDragged = false;
+      targetSlot = idx;
+
+      holdTimer = setTimeout(startDrag, 220);
+
+      const onPointerMove = (me) => {
+        if (me.pointerId !== pointerId) return;
+        const dx = me.clientX - startX;
+        const dy = me.clientY - startY;
+
+        if (!isDragging) {
+          if (me.pointerType === 'mouse' && Math.hypot(dx, dy) > 5) {
+            clearTimeout(holdTimer);
+            startDrag();
+          } else if (Math.hypot(dx, dy) > 8) {
+            clearTimeout(holdTimer);
+            return;
+          } else {
+            return;
+          }
+        }
+
+        me.preventDefault();
+        if (ghostEl) {
+          ghostEl.style.left = `${me.clientX}px`;
+          ghostEl.style.top = `${me.clientY}px`;
+        }
+
+        const chipEls = Array.from(els.songformFlowList.querySelectorAll('.songform-flow-chip'));
+        targetSlot = calculateSongformDropSlot(me.clientX, me.clientY, chipEls);
+        if (dropIndicator) {
+          updateSongformDropIndicator(targetSlot, chipEls, dropIndicator);
+        }
+      };
+
+      const onPointerUp = (ue) => {
+        if (ue.pointerId !== pointerId) return;
+        clearTimeout(holdTimer);
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointercancel', onPointerUp);
+
+        if (ghostEl && ghostEl.parentNode) {
+          ghostEl.parentNode.removeChild(ghostEl);
+          ghostEl = null;
+        }
+        if (dropIndicator && dropIndicator.parentNode) {
+          dropIndicator.parentNode.removeChild(dropIndicator);
+          dropIndicator = null;
+        }
+
+        if (isDragging) {
+          if (targetSlot !== idx && targetSlot !== idx + 1) {
+            const [movedItem] = currentOrderFlow.splice(idx, 1);
+            const newIndex = (targetSlot > idx) ? (targetSlot - 1) : targetSlot;
+            currentOrderFlow.splice(newIndex, 0, movedItem);
+          }
+          renderSongformOrderFlowList();
+        }
+      };
+
+      window.addEventListener('pointermove', onPointerMove, { passive: false });
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerUp);
+    };
+
+    chip.addEventListener('pointerdown', onPointerDown);
+
+    chip.addEventListener('click', (e) => {
+      if (hasDragged || isDragging) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       currentOrderFlow.splice(idx, 1);
       renderSongformOrderFlowList();
     });
+
     els.songformFlowList.appendChild(chip);
 
     if (idx < currentOrderFlow.length - 1) {
       const arrow = document.createElement('span');
-      arrow.className = 'text-xs opacity-40 font-bold';
+      arrow.className = 'text-xs opacity-40 font-bold select-none';
       arrow.textContent = '>';
       els.songformFlowList.appendChild(arrow);
     }
@@ -5495,6 +5777,30 @@ function wireEventListeners() {
     });
   }
 
+  // 2면 편집 시 악보 터치/클릭으로 활성 편집 슬롯 전환 (디밍 토글)
+  if (els.sheetContainer) {
+    els.sheetContainer.addEventListener('click', (e) => {
+      if (!state.locked && isTwoPageViewActive() && state.activeTwoPageSlot === 'right') {
+        if (!e.target.closest('.sticker-item') && !e.target.closest('button')) {
+          state.activeTwoPageSlot = 'left';
+          applyUIState();
+          renderSongformStickyChips();
+        }
+      }
+    });
+  }
+  if (els.sheetContainerRight) {
+    els.sheetContainerRight.addEventListener('click', (e) => {
+      if (!state.locked && isTwoPageViewActive() && state.activeTwoPageSlot === 'left') {
+        if (!e.target.closest('.sticker-item') && !e.target.closest('button')) {
+          state.activeTwoPageSlot = 'right';
+          applyUIState();
+          renderSongformStickyChips();
+        }
+      }
+    });
+  }
+
   // 콘티 내 곡 추가 버튼들 (현재 콘티에만 추가)
   if (els.songListAddBtn) {
     els.songListAddBtn.addEventListener('click', () => {
@@ -5529,8 +5835,13 @@ function wireEventListeners() {
     if (state.locked === nextLocked) return;
     const wasEditing = !state.locked;
     state.locked = nextLocked;
+    if (state.locked) {
+      resetZoom();
+      if (isTwoPageViewActive() && state.currentIndex % 2 !== 0) {
+        state.currentIndex = Math.floor(state.currentIndex / 2) * 2;
+      }
+    }
     saveCurrentMenuSession();
-    if (state.locked) resetZoom();
     applyUIState();
     await renderAll();
 
@@ -6280,7 +6591,7 @@ function wireEventListeners() {
     if (els.songformStepInput && els.songformStepInput.value.trim()) {
       addSongformStep(els.songformStepInput.value);
     }
-    const song = state.songs[state.currentIndex];
+    const song = currentOrderSong || state.songs[state.currentIndex];
     if (song) {
       const prevSf = song.songform || [];
       const isSame = (prevSf.length === currentOrderFlow.length) &&
@@ -6309,7 +6620,6 @@ function wireEventListeners() {
         if (hasDriveAuth()) {
           syncLibraryToDrive(state.allSongs, true);
         }
-        renderSongLibraryView();
       } else {
         // [2. 콘티 모드]
         await saveSongs();
@@ -6344,13 +6654,23 @@ function wireEventListeners() {
         if (hasDriveAuth() && state.currentContiId) {
           syncContiDetailToDrive(state.currentContiId, true);
         }
-        renderSongListView();
-        renderSongLibraryView();
       }
     }
+    currentOrderSong = null;
     hide(els.songformOrderModal);
-    renderSongformStickyChips();
-    applyUIState();
+
+    // 현재 화면 상태에 맞게 안전하게 리렌더링 (뷰어 화면 유지 보장)
+    if (state.viewLevel === 'viewer') {
+      await renderAll();
+    } else if (state.viewLevel === 'songList') {
+      renderSongListView();
+      applyUIState();
+    } else if (state.viewLevel === 'songLibrary') {
+      renderSongLibraryView();
+      applyUIState();
+    } else {
+      applyUIState();
+    }
   });
   document.querySelectorAll('[data-close-songform-order]').forEach(el => el.addEventListener('click', () => hide(els.songformOrderModal)));
 

@@ -607,11 +607,11 @@
 
         <div class="border-t" style="border-color:var(--border)"></div>
 
-        <!-- [사용자 악보 보기: 1곡씩 vs 2곡씩 (양면)] -->
+        <!-- [악보 보기: 1곡씩 vs 2곡씩 (양면)] -->
         <section class="flex items-center justify-between gap-3">
           <div>
-            <h3 class="text-sm font-bold">사용자 악보 보기</h3>
-            <p class="text-xs mt-0.5" style="color:var(--text-dim)">가로 모드 2면 / 세로 모드 1면</p>
+            <h3 class="text-sm font-bold">가로 모드 2면 보기</h3>
+            <p class="text-xs mt-0.5" style="color:var(--text-dim)">가로 모드 2면 / 세로 모드 1면 (보기 상태에서 적용)</p>
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <button id="viewCount1Btn" class="px-3 sm:px-3.5 py-2 rounded-xl border font-semibold text-xs sm:text-sm active:scale-95 transition-all">
@@ -1341,7 +1341,7 @@
         <!-- 3. 현재 구성된 송폼 순서 체인 (A1 > A2 > B ...) -->
         <div>
           <div class="flex items-center justify-between mb-1.5">
-            <p class="text-xs font-semibold" style="color:var(--text-dim)">현재 진행 순서 (칩 탭 시 개별 삭제)</p>
+            <p class="text-xs font-semibold" style="color:var(--text-dim)">현재 진행 순서 <span class="font-normal opacity-80">(꾹 눌러 순서 변경 · 탭 시 삭제)</span></p>
             <button id="songformClearFlowBtn" class="text-xs text-red-500 hover:underline">전체 비우기</button>
           </div>
           <div id="songformFlowList" class="flex flex-wrap items-center gap-1.5 p-3 rounded-xl border min-h-[58px]"

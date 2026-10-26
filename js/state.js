@@ -26,7 +26,8 @@ export const state = {
   stylusOnly: true, // 펜 전용 모드 (Palm Rejection: 손바닥/손가락 터치 필기 무시, 기본 활성화)
   stickerStep: 3, // 스티커 크기 단계 (총 7단계, 기본 3단계: 1.0x)
   stickerScale: 1.0, // 송폼/코드 스티커 배율
-  viewSheetCount: 2, // 사용자 메뉴 악보 보기: 1 (항상 1곡씩) | 2 (해상도 자동 감지: 가로 2면 / 세로 1면)
+  viewSheetCount: 2, // 악보 보기: 1 (항상 1곡씩) | 2 (해상도 자동 감지: 가로 2면 / 세로 1면)
+  activeTwoPageSlot: 'left', // 2면 편집 시 현재 포커스된 슬롯: 'left' | 'right'
   pageAnim: 'smooth', // 곡 넘김 효과: 'smooth' (부드럽게) | 'instant' (즉시 전환)
   cropTarget: null,
   cropMode: 'auto', // 'auto' | 'manual'
