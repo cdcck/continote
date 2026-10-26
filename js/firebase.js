@@ -132,13 +132,63 @@ export function subscribeAuth(callback) {
   return onAuthStateChanged(auth, callback);
 }
 
-/** 유저 프로필 조회 */
-export async function getUserProfile(uid) {
+/** 유저 프로필 조회 (신규 프로젝트 이동 시 이메일 기반 프로필 및 조직 자동 승계) */
+export async function getUserProfile(uid, email = '') {
   if (!uid) return null;
   const userRef = doc(db, 'users', uid);
   const snap = await getDoc(userRef);
-  if (!snap.exists()) return null;
-  return { uid, ...snap.data() };
+  
+  if (snap.exists()) {
+    return { uid, ...snap.data() };
+  }
+
+  // UID로 찾지 못했고 이메일 정보가 있는 경우 (Firebase 프로젝트 이전 후 첫 로그인 시)
+  const cleanEmail = (email || '').toLowerCase().trim();
+  if (cleanEmail) {
+    try {
+      const usersColl = collection(db, 'users');
+      const q = query(usersColl, where('email', '==', cleanEmail));
+      const emailSnap = await getDocs(q);
+      if (!emailSnap.empty) {
+        const oldDoc = emailSnap.docs[0];
+        const oldData = oldDoc.data();
+        const migratedProfile = {
+          ...oldData,
+          uid: uid,
+          updatedAt: serverTimestamp()
+        };
+
+        // 새 UID로 유저 문서 복사/승계
+        await setDoc(userRef, migratedProfile, { merge: true });
+
+        // 관리자 권한이 있는 경우 orgs의 adminUids에도 새 uid 등록
+        if (migratedProfile.orgId) {
+          try {
+            const orgRef = doc(db, 'orgs', migratedProfile.orgId);
+            const orgSnap = await getDoc(orgRef);
+            if (orgSnap.exists()) {
+              const orgData = orgSnap.data();
+              const adminUids = Array.isArray(orgData.adminUids) ? orgData.adminUids : [];
+              if ((migratedProfile.role === 'admin' || (oldDoc.id && adminUids.includes(oldDoc.id))) && !adminUids.includes(uid)) {
+                await updateDoc(orgRef, {
+                  adminUids: [...adminUids, uid]
+                });
+              }
+            }
+          } catch (e) {
+            console.warn('[Firebase] org adminUids 자동 승계 건너뜀:', e);
+          }
+        }
+
+        console.log(`[Firebase] 이전된 프로필을 새 UID(${uid})로 자동 승계 완료!`);
+        return { uid, ...migratedProfile };
+      }
+    } catch (err) {
+      console.warn('[Firebase] 이메일 기반 프로필 승계 검색 실패:', err);
+    }
+  }
+
+  return null;
 }
 
 /** 모든 조직(교회) 목록 조회 (가입 신청 시 선택용) */

@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ContiNote - Firestore 데이터베이스 마이그레이션</title>
+  <link rel="icon" href="/icons/icon-192.png">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-family);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 30px 20px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 860px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .header {
+      text-align: center;
+      padding-bottom: 10px;
+    }
+    .header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .header p {
+      color: var(--text-muted);
+      margin-top: 8px;
+      font-size: 14px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* 플로우 다이어그램 */
+    .flow-grid {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 15px;
+    }
+    .db-box {
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .db-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+    .db-badge.src { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .db-badge.tgt { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+    .db-name {
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+    .db-status {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #64748b;
+    }
+    .status-dot.active { background: var(--success); }
+
+    .arrow-icon {
+      font-size: 24px;
+      color: var(--text-muted);
+    }
+
+    .auth-buttons {
+      margin-top: 12px;
+      display: flex;
+      gap: 8px;
+    }
+    .btn-auth {
+      background: #334155;
+      color: #fff;
+      border: none;
+      padding: 7px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-auth:hover { background: #475569; }
+
+    /* 체크박스 그룹 */
+    .checkbox-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .checkbox-label {
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+      user-select: none;
+      transition: border-color 0.2s;
+    }
+    .checkbox-label:hover { border-color: var(--primary); }
+    .checkbox-label input { margin-top: 3px; }
+    .checkbox-text strong { display: block; font-size: 14px; color: #fff; }
+    .checkbox-text span { font-size: 12px; color: var(--text-muted); }
+
+    /* 프로그레스 & 통계 */
+    .progress-bar-container {
+      background: #0f172a;
+      height: 12px;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 14px;
+      border: 1px solid var(--card-border);
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--primary), var(--success));
+      transition: width 0.25s ease;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+      text-align: center;
+    }
+    .stat-box {
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .stat-val { font-size: 20px; font-weight: 700; color: #fff; }
+    .stat-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    /* 로그 창 */
+    .log-box {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      max-height: 280px;
+      overflow-y: auto;
+      color: #cbd5e1;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-line { margin-bottom: 2px; }
+    .log-info { color: #60a5fa; }
+    .log-success { color: #34d399; }
+    .log-warn { color: #fbbf24; }
+    .log-error { color: #f87171; font-weight: 600; }
+
+    /* 액션 버튼 */
+    .btn-action {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 14px 24px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.2s;
+      box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+    }
+    .btn-action:hover:not(:disabled) {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+    .btn-action:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .notice {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #fde68a;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🚀 ContiNote DB 마이그레이션</h1>
+      <p>기존 Firestore 프로젝트의 데이터를 새 프로젝트로 안전하게 복사 및 이전합니다.</p>
+    </div>
+
+    <!-- DB 연결 상태 -->
+    <div class="card">
+      <div class="card-title">
+        <span>데이터베이스 연결 정보</span>
+      </div>
+      <div class="flow-grid">
+        <div class="db-box">
+          <span class="db-badge src">Source (기존)</span>
+          <div class="db-name" id="srcProj">continote-cc</div>
+          <div class="db-status">
+            <span class="status-dot" id="srcDot"></span>
+            <span id="srcAuthLabel">미로그인 (공개 읽기 또는 로그인 필요)</span>
+          </div>
+          <div class="auth-buttons">
+            <button class="btn-auth" id="btnSrcLogin">Google 로그인</button>
+            <button class="btn-auth" id="btnSrcLogout" style="display:none;">로그아웃</button>
+          </div>
+        </div>
+
+        <div class="arrow-icon">➡️</div>
+
+        <div class="db-box">
+          <span class="db-badge tgt">Target (새 프로젝트)</span>
+          <div class="db-name" id="tgtProj">contiz</div>
+          <div class="db-status">
+            <span class="status-dot" id="tgtDot"></span>
+            <span id="tgtAuthLabel">미로그인 (공개 쓰기 또는 로그인 필요)</span>
+          </div>
+          <div class="auth-buttons">
+            <button class="btn-auth" id="btnTgtLogin">Google 로그인</button>
+            <button class="btn-auth" id="btnTgtLogout" style="display:none;">로그아웃</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 이전 대상 컬렉션 -->
+    <div class="card">
+      <div class="card-title">
+        <span>이전할 컬렉션 선택</span>
+      </div>
+      <div class="checkbox-grid">
+        <label class="checkbox-label">
+          <input type="checkbox" id="chkOrgs" checked>
+          <div class="checkbox-text">
+            <strong>orgs (조직/교회)</strong>
+            <span>찬양팀 및 조직 정보</span>
+          </div>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="chkUsers" checked>
+          <div class="checkbox-text">
+            <strong>users (사용자)</strong>
+            <span>프로필 및 소속 정보</span>
+          </div>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="chkSongs" checked>
+          <div class="checkbox-text">
+            <strong>songs + versions</strong>
+            <span>악보 마스터 및 하위 버전</span>
+          </div>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="chkContis" checked>
+          <div class="checkbox-text">
+            <strong>contis (콘티)</strong>
+            <span>작성된 세트리스트</span>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- 주의사항 알림 -->
+    <div class="notice">
+      💡 <strong>안내:</strong> 만약 Firestore 보안 규칙(Security Rules)으로 인해 "permission-denied" 오류가 발생할 경우, 각 DB 박스의 <strong>[Google 로그인]</strong> 버튼을 눌러 관리자 계정으로 로그인하거나 Firebase 콘솔의 Firestore 규칙 탭에서 일시적으로 읽기/쓰기를 허용해 주세요.
+    </div>
+
+    <!-- 실행 버튼 및 진행률 -->
+    <button class="btn-action" id="btnStart">
+      <span>▶ 데이터 이전 시작</span>
+    </button>
+
+    <div class="card">
+      <div class="card-title">
+        <span>이전 진행 상황</span>
+        <span id="progressText" style="font-size: 13px; color: var(--text-muted);">대기 중</span>
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-val" id="statTotal">0</div>
+          <div class="stat-label">총 발견 문서</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="statSuccess" style="color: var(--success);">0</div>
+          <div class="stat-label">복사 성공</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="statFailed" style="color: var(--danger);">0</div>
+          <div class="stat-label">복사 실패</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 실시간 로그 콘솔 -->
+    <div class="card">
+      <div class="card-title">
+        <span>실시간 로그</span>
+        <button class="btn-auth" id="btnClearLog">로그 지우기</button>
+      </div>
+      <div class="log-box" id="logBox">[시스템 준비 완료] 이전할 항목을 확인한 후 '데이터 이전 시작' 버튼을 눌러주세요.</div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      signOut,
+      onAuthStateChanged
+    } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+    import {
+      getFirestore,
+      collection,
+      getDocs,
+      doc,
+      setDoc
+    } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+    // 1. 소스 DB (continote-cc) 설정
+    const srcConfig = {
+      apiKey: "AIzaSyA9mYZvKTlDgswQctnEL03CmaFit5RgUcg",
+      authDomain: "continote-cc.firebaseapp.com",
+      projectId: "continote-cc",
+      storageBucket: "continote-cc.firebasestorage.app",
+      messagingSenderId: "389532117634",
+      appId: "1:389532117634:web:d23bb84a9949e13845629b"
+    };
+
+    // 2. 타깃 DB (contiz) 설정
+    const tgtConfig = {
+      apiKey: "AIzaSyChl7K99lOelbofqveYHvrdzhqFrNsxRPY",
+      authDomain: "contiz.firebaseapp.com",
+      projectId: "contiz",
+      storageBucket: "contiz.firebasestorage.app",
+      messagingSenderId: "335120800015",
+      appId: "1:335120800015:web:0b30acad3ea968facb467a"
+    };
+
+    // 앱 초기화
+    const srcApp = initializeApp(srcConfig, 'sourceApp');
+    const srcAuth = getAuth(srcApp);
+    const srcDb = getFirestore(srcApp);
+
+    const tgtApp = initializeApp(tgtConfig, 'targetApp');
+    const tgtAuth = getAuth(tgtApp);
+    const tgtDb = getFirestore(tgtApp);
+
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    // UI 요소
+    const logBox = document.getElementById('logBox');
+    const btnStart = document.getElementById('btnStart');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const statTotal = document.getElementById('statTotal');
+    const statSuccess = document.getElementById('statSuccess');
+    const statFailed = document.getElementById('statFailed');
+
+    function log(msg, type = '') {
+      const line = document.createElement('div');
+      line.className = `log-line log-${type}`;
+      const time = new Date().toLocaleTimeString();
+      line.textContent = `[${time}] ${msg}`;
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    document.getElementById('btnClearLog').onclick = () => {
+      logBox.innerHTML = '';
+    };
+
+    // Auth 상태 감지
+    onAuthStateChanged(srcAuth, user => {
+      const label = document.getElementById('srcAuthLabel');
+      const dot = document.getElementById('srcDot');
+      const btnIn = document.getElementById('btnSrcLogin');
+      const btnOut = document.getElementById('btnSrcLogout');
+      if (user) {
+        label.textContent = `로그인: ${user.email}`;
+        label.style.color = '#34d399';
+        dot.classList.add('active');
+        btnIn.style.display = 'none';
+        btnOut.style.display = 'inline-block';
+        log(`[Source] Google 로그인 성공: ${user.email}`, 'info');
+      } else {
+        label.textContent = '미로그인 (공개 읽기 또는 로그인 필요)';
+        label.style.color = '';
+        dot.classList.remove('active');
+        btnIn.style.display = 'inline-block';
+        btnOut.style.display = 'none';
+      }
+    });
+
+    onAuthStateChanged(tgtAuth, user => {
+      const label = document.getElementById('tgtAuthLabel');
+      const dot = document.getElementById('tgtDot');
+      const btnIn = document.getElementById('btnTgtLogin');
+      const btnOut = document.getElementById('btnTgtLogout');
+      if (user) {
+        label.textContent = `로그인: ${user.email}`;
+        label.style.color = '#34d399';
+        dot.classList.add('active');
+        btnIn.style.display = 'none';
+        btnOut.style.display = 'inline-block';
+        log(`[Target] Google 로그인 성공: ${user.email}`, 'info');
+      } else {
+        label.textContent = '미로그인 (공개 쓰기 또는 로그인 필요)';
+        label.style.color = '';
+        dot.classList.remove('active');
+        btnIn.style.display = 'inline-block';
+        btnOut.style.display = 'none';
+      }
+    });
+
+    // 로그인 버튼 핸들러
+    document.getElementById('btnSrcLogin').onclick = async () => {
+      try {
+        await signInWithPopup(srcAuth, provider);
+      } catch (err) {
+        log(`[Source] 로그인 실패: ${err.message}`, 'error');
+      }
+    };
+    document.getElementById('btnSrcLogout').onclick = async () => {
+      await signOut(srcAuth);
+      log(`[Source] 로그아웃되었습니다.`, 'info');
+    };
+
+    document.getElementById('btnTgtLogin').onclick = async () => {
+      try {
+        await signInWithPopup(tgtAuth, provider);
+      } catch (err) {
+        log(`[Target] 로그인 실패: ${err.message}`, 'error');
+      }
+    };
+    document.getElementById('btnTgtLogout').onclick = async () => {
+      await signOut(tgtAuth);
+      log(`[Target] 로그아웃되었습니다.`, 'info');
+    };
+
+    // 마이그레이션 실행
+    btnStart.onclick = async () => {
+      const collectionsToMigrate = [];
+      if (document.getElementById('chkOrgs').checked) collectionsToMigrate.push('orgs');
+      if (document.getElementById('chkUsers').checked) collectionsToMigrate.push('users');
+      if (document.getElementById('chkSongs').checked) collectionsToMigrate.push('songs');
+      if (document.getElementById('chkContis').checked) collectionsToMigrate.push('contis');
+
+      if (collectionsToMigrate.length === 0) {
+        alert('이전할 컬렉션을 하나 이상 선택해 주세요.');
+        return;
+      }
+
+      if (!confirm(`선택한 ${collectionsToMigrate.join(', ')} 컬렉션을\ncontinote-cc ➡️ contiz 로 이전하시겠습니까?`)) {
+        return;
+      }
+
+      btnStart.disabled = true;
+      btnStart.innerHTML = '<span>⏳ 마이그레이션 진행 중...</span>';
+      
+      let totalCount = 0;
+      let successCount = 0;
+      let failedCount = 0;
+
+      statTotal.textContent = '0';
+      statSuccess.textContent = '0';
+      statFailed.textContent = '0';
+      progressBar.style.width = '0%';
+      progressText.textContent = '준비 중...';
+
+      log('====================================');
+      log(`🚀 [마이그레이션 시작] 대상 컬렉션: ${collectionsToMigrate.join(', ')}`, 'info');
+
+      try {
+        for (let i = 0; i < collectionsToMigrate.length; i++) {
+          const colName = collectionsToMigrate[i];
+          progressText.textContent = `[${i + 1}/${collectionsToMigrate.length}] '${colName}' 컬렉션 조회 중...`;
+          log(`\n📂 '${colName}' 컬렉션 데이터 가져오는 중...`, 'info');
+
+          let snap;
+          try {
+            snap = await getDocs(collection(srcDb, colName));
+          } catch (readErr) {
+            log(`❌ '${colName}' 읽기 실패: ${readErr.message}`, 'error');
+            if (readErr.message.includes('permission-denied')) {
+              log(`👉 [팁] Source DB 로그인 버튼을 누르거나 continote-cc 콘솔의 Firestore 규칙을 확인하세요.`, 'warn');
+            }
+            continue;
+          }
+
+          log(`총 ${snap.docs.length}개의 '${colName}' 문서를 발견했습니다. 이전 시작...`);
+          totalCount += snap.docs.length;
+          statTotal.textContent = totalCount;
+
+          for (const d of snap.docs) {
+            const data = d.data();
+            const docId = d.id;
+
+            try {
+              // 1) 대상 DB에 저장
+              await setDoc(doc(tgtDb, colName, docId), data, { merge: true });
+              successCount++;
+              statSuccess.textContent = successCount;
+              log(`  ✔ [${colName}] id: ${docId} 복사 완료`, 'success');
+
+              // 2) songs의 경우 하위 컬렉션 'versions'도 함께 탐색하여 복사
+              if (colName === 'songs') {
+                try {
+                  const verSnap = await getDocs(collection(srcDb, 'songs', docId, 'versions'));
+                  if (verSnap.docs.length > 0) {
+                    totalCount += verSnap.docs.length;
+                    statTotal.textContent = totalCount;
+                    for (const vDoc of verSnap.docs) {
+                      await setDoc(doc(tgtDb, 'songs', docId, 'versions', vDoc.id), vDoc.data(), { merge: true });
+                      successCount++;
+                      statSuccess.textContent = successCount;
+                      log(`    └ 📎 [version] id: ${vDoc.id} 복사 완료`, 'success');
+                    }
+                  }
+                } catch (verErr) {
+                  log(`    └ ⚠️ [version] 하위 버전 조회 실패 (doc: ${docId}): ${verErr.message}`, 'warn');
+                }
+              }
+            } catch (writeErr) {
+              failedCount++;
+              statFailed.textContent = failedCount;
+              log(`  ❌ [${colName}] id: ${docId} 복사 실패: ${writeErr.message}`, 'error');
+              if (writeErr.message.includes('permission-denied')) {
+                log(`  👉 [팁] Target DB 로그인 버튼을 누르거나 contiz 콘솔의 Firestore 규칙을 확인하세요.`, 'warn');
+              }
+            }
+
+            // 프로그레스 바 갱신
+            if (totalCount > 0) {
+              const pct = Math.round(((successCount + failedCount) / totalCount) * 100);
+              progressBar.style.width = `${pct}%`;
+              progressText.textContent = `${pct}% 완료 (${successCount + failedCount}/${totalCount})`;
+            }
+          }
+        }
+
+        log('\n====================================');
+        log(`🎉 [마이그레이션 종료] 성공: ${successCount}건, 실패: ${failedCount}건`, successCount > 0 ? 'success' : 'warn');
+        progressText.textContent = `이전 완료! (성공 ${successCount} / 실패 ${failedCount})`;
+        alert(`마이그레이션이 완료되었습니다!\n성공: ${successCount}건, 실패: ${failedCount}건`);
+      } catch (globalErr) {
+        log(`치명적인 오류 발생: ${globalErr.message}`, 'error');
+        alert(`오류 발생: ${globalErr.message}`);
+      } finally {
+        btnStart.disabled = false;
+        btnStart.innerHTML = '<span>▶ 데이터 이전 다시 시작</span>';
+      }
+    };
+  </script>
+</body>
+</html>

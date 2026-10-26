@@ -838,7 +838,7 @@ function initFirebaseAuth() {
     currentAuthUser = user;
     if (user) {
       try {
-        const profile = await getUserProfile(user.uid);
+        const profile = await getUserProfile(user.uid, user.email);
         if (!profile || !profile.orgId) {
           await openOrgOnboardingModal(user);
           return;
@@ -6781,7 +6781,7 @@ function wireEventListeners() {
       const originalText = els.pendingRefreshBtn.innerHTML;
       els.pendingRefreshBtn.innerHTML = '<span>확인 중...</span>';
       try {
-        const profile = await getUserProfile(currentAuthUser.uid);
+        const profile = await getUserProfile(currentAuthUser.uid, currentAuthUser.email);
         if (profile && profile.status === 'approved') {
           hide(els.pendingApprovalScreen);
           state.currentUser = {
