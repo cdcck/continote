@@ -6845,7 +6845,6 @@ function wireEventListeners() {
    초기화
    ================================================== */
 document.addEventListener('DOMContentLoaded', async () => {
-  purgeNetlifyWidgets();
   cacheElements();
   const prefs = loadPreferences();
   state.theme = prefs.theme || 'system';
@@ -7012,52 +7011,4 @@ function setupPWAInstall() {
     deferredInstallPrompt = null;
   });
 }
-
-/* ========================================================
-   Netlify 주입 위젯 & 배지 런타임 실시간 제거
-   ======================================================== */
-function purgeNetlifyWidgets() {
-  const isNetlifyEl = (el) => {
-    if (!el || el.nodeType !== 1) return false;
-    const tag = (el.tagName || '').toLowerCase();
-    if (tag.includes('netlify')) return true;
-    const id = (el.id || '').toLowerCase();
-    const cls = (typeof el.className === 'string' ? el.className : '').toLowerCase();
-    if (id.includes('netlify') || cls.includes('netlify')) return true;
-    if (el.hasAttribute && (el.hasAttribute('data-netlify-deploy-id') || el.hasAttribute('data-netlify'))) return true;
-    if (tag === 'a' && ((el.href || '').includes('netlify.com') || (el.href || '').includes('netlify.app'))) return true;
-    if (tag === 'iframe' && ((el.src || '').includes('netlify') || (el.id || '').includes('netlify'))) return true;
-    return false;
-  };
-
-  const removeMatched = (root) => {
-    if (!root) return;
-    if (isNetlifyEl(root)) {
-      root.remove();
-      return;
-    }
-    const candidates = root.querySelectorAll ? root.querySelectorAll('*') : [];
-    candidates.forEach(el => {
-      if (isNetlifyEl(el)) {
-        el.remove();
-      }
-    });
-  };
-
-  // 초기 1회 실행
-  if (document.body) removeMatched(document.body);
-
-  // 실시간 동적 주입 감지
-  const observer = new MutationObserver((mutations) => {
-    for (const m of mutations) {
-      for (const node of m.addedNodes) {
-        if (node.nodeType === 1) {
-          removeMatched(node);
-        }
-      }
-    }
-  });
-
-  observer.observe(document.documentElement, { childList: true, subtree: true });
 }
-

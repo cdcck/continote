@@ -650,39 +650,6 @@ body.keyboard-open .app-modal .overflow-y-auto {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
-/* ========================================================
-   [중요] Netlify 자동 주입 배지 & 플로팅 위젯 완벽 제거
-   - "Powered by Netlify" 배지 및 피드백 드로어가 모바일 하단을 가리는 현상 방지
-   ======================================================== */
-[class*="netlify" i],
-[id*="netlify" i],
-[data-netlify],
-div[data-netlify-deploy-id],
-netlify-drawer,
-netlify-badge,
-.netlify-badge,
-#netlify-badge,
-iframe[src*="netlify" i],
-iframe[id*="netlify" i],
-a[href*="netlify.com" i],
-a[href*="netlify.app" i],
-div:has(> a[href*="netlify.com" i]),
-div:has(> a[href*="netlify.app" i]) {
-  display: none !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-  height: 0 !important;
-  width: 0 !important;
-  max-height: 0 !important;
-  max-width: 0 !important;
-  overflow: hidden !important;
-  position: absolute !important;
-  left: -9999px !important;
-  top: -9999px !important;
-  z-index: -9999 !important;
-}
-
 /* 악보 순서 드래그 앤 드롭 핸들 */
 .drag-handle {
   cursor: grab;

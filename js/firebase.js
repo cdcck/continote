@@ -32,13 +32,12 @@ import {
 // [1] Firebase Configuration & Initialization
 // ==========================================
 export const firebaseConfig = {
-  apiKey: "AIzaSyA9mYZvKTlDgswQctnEL03CmaFit5RgUcg",
-  authDomain: "continote-cc.firebaseapp.com",
-  projectId: "continote-cc",
-  storageBucket: "continote-cc.firebasestorage.app",
-  messagingSenderId: "389532117634",
-  appId: "1:389532117634:web:d23bb84a9949e13845629b",
-  measurementId: "G-J66ZHLM4PR"
+  apiKey: "AIzaSyChl7K99lOelbofqveYHvrdzhqFrNsxRPY",
+  authDomain: "contiz.firebaseapp.com",
+  projectId: "contiz",
+  storageBucket: "contiz.firebasestorage.app",
+  messagingSenderId: "335120800015",
+  appId: "1:335120800015:web:0b30acad3ea968facb467a"
 };
 
 export const app = initializeApp(firebaseConfig);
