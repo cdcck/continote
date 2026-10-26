@@ -7011,4 +7011,3 @@ function setupPWAInstall() {
     deferredInstallPrompt = null;
   });
 }
-}
