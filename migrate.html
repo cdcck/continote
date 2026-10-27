@@ -397,7 +397,11 @@
       collection,
       getDocs,
       doc,
-      setDoc
+      setDoc,
+      updateDoc,
+      deleteDoc,
+      query,
+      where
     } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
     // 1. 소스 DB (continote-cc) 설정
@@ -621,6 +625,49 @@
               progressText.textContent = `${pct}% 완료 (${successCount + failedCount}/${totalCount})`;
             }
           }
+        }
+
+        // 마이그레이션 완료 후 Target DB 내 동일 이름의 중복 orgs 자동 통합 및 정리
+        try {
+          log(`\n🧹 [중복 조직 검사] 동일 이름으로 생성된 중복 orgId 검사 중...`, 'info');
+          const tgtOrgsSnap = await getDocs(collection(tgtDb, 'orgs'));
+          const byName = new Map();
+          tgtOrgsSnap.docs.forEach(d => {
+            const o = { id: d.id, ...d.data() };
+            const nameKey = (o.name || '').trim();
+            if (!nameKey) return;
+            if (!byName.has(nameKey)) byName.set(nameKey, []);
+            byName.get(nameKey).push(o);
+          });
+
+          for (const [name, group] of byName.entries()) {
+            if (group.length <= 1) continue;
+            log(`  ⚠️ 동일 이름 조직 발견: '${name}' (${group.length}개) -> 통합 진행...`, 'warn');
+
+            // 악보+콘티가 있는 원본 orgId를 우선 선택
+            const scored = [];
+            for (const o of group) {
+              const sSnap = await getDocs(query(collection(tgtDb, 'songs'), where('orgId', '==', o.id)));
+              const cSnap = await getDocs(query(collection(tgtDb, 'contis'), where('orgId', '==', o.id)));
+              scored.push({ org: o, count: sSnap.size + cSnap.size });
+            }
+            scored.sort((a, b) => b.count - a.count);
+            const primary = scored[0].org;
+            const dups = scored.slice(1).map(s => s.org);
+
+            for (const dup of dups) {
+              for (const col of ['users', 'songs', 'contis']) {
+                const subSnap = await getDocs(query(collection(tgtDb, col), where('orgId', '==', dup.id)));
+                for (const sd of subSnap.docs) {
+                  await updateDoc(doc(tgtDb, col, sd.id), { orgId: primary.id });
+                }
+              }
+              await deleteDoc(doc(tgtDb, 'orgs', dup.id));
+              log(`  ✔ 중복 org 삭제 및 통합 완료: ${dup.id} ➡️ ${primary.id} (${name})`, 'success');
+            }
+          }
+        } catch (dedupErr) {
+          log(`  ⚠️ 중복 조직 자동 정리 중 경고: ${dedupErr.message}`, 'warn');
         }
 
         log('\n====================================');

@@ -132,100 +132,275 @@ export function subscribeAuth(callback) {
   return onAuthStateChanged(auth, callback);
 }
 
-/** 유저 프로필 조회 (신규 프로젝트 이동 시 이메일 기반 프로필 및 조직 자동 승계) */
+let orgConsolidationPromise = null;
+
+/**
+ * 동일 이름(name)으로 중복 생성된 조직(orgs) 문서를 감지하여
+ * 실제 데이터(악보/콘티/팀원)가 있는 원본 orgId로 자동 통합 및 중복 문서 삭제
+ */
+export async function consolidateDuplicateOrgs() {
+  if (orgConsolidationPromise) return orgConsolidationPromise;
+
+  orgConsolidationPromise = (async () => {
+    try {
+      const orgsColl = collection(db, 'orgs');
+      const snap = await getDocs(orgsColl);
+      const allOrgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      const byName = new Map();
+      for (const org of allOrgs) {
+        const key = (org.name || '').trim();
+        if (!key) continue;
+        if (!byName.has(key)) byName.set(key, []);
+        byName.get(key).push(org);
+      }
+
+      const canonicalOrgs = [];
+
+      for (const [name, group] of byName.entries()) {
+        if (group.length === 1) {
+          canonicalOrgs.push(group[0]);
+          continue;
+        }
+
+        const scored = await Promise.all(group.map(async (org) => {
+          let dataScore = 0;
+          let userScore = 0;
+          try {
+            const [songsSnap, contisSnap, usersSnap] = await Promise.all([
+              getDocs(query(collection(db, 'songs'), where('orgId', '==', org.id))),
+              getDocs(query(collection(db, 'contis'), where('orgId', '==', org.id))),
+              getDocs(query(collection(db, 'users'), where('orgId', '==', org.id)))
+            ]);
+            dataScore = songsSnap.size + contisSnap.size;
+            userScore = usersSnap.size;
+          } catch (e) {
+            console.warn('[Firebase] 중복 조직 점수 계산 중 경고:', e);
+          }
+          const createdMillis = org.createdAt?.toMillis ? org.createdAt.toMillis() : Number.MAX_SAFE_INTEGER;
+          return { org, dataScore, userScore, createdMillis };
+        }));
+
+        scored.sort((a, b) => {
+          if (b.dataScore !== a.dataScore) return b.dataScore - a.dataScore;
+          if (b.userScore !== a.userScore) return b.userScore - a.userScore;
+          return a.createdMillis - b.createdMillis;
+        });
+
+        const primaryOrg = scored[0].org;
+        const duplicates = scored.slice(1).map(s => s.org);
+        const mergedAdmins = new Set(Array.isArray(primaryOrg.adminUids) ? primaryOrg.adminUids : []);
+
+        for (const dup of duplicates) {
+          if (Array.isArray(dup.adminUids)) {
+            dup.adminUids.forEach(u => mergedAdmins.add(u));
+          }
+
+          for (const colName of ['users', 'songs', 'contis']) {
+            try {
+              const colSnap = await getDocs(query(collection(db, colName), where('orgId', '==', dup.id)));
+              for (const d of colSnap.docs) {
+                await updateDoc(doc(db, colName, d.id), { orgId: primaryOrg.id });
+              }
+            } catch (moveErr) {
+              console.warn(`[Firebase] 중복 org(${dup.id}) -> 원본 org(${primaryOrg.id}) ${colName} 이관 실패:`, moveErr);
+            }
+          }
+
+          try {
+            await deleteDoc(doc(db, 'orgs', dup.id));
+            console.log(`[Firebase] 중복 생성된 동일 이름 조직 '${name}' (id: ${dup.id}) -> 원본 (id: ${primaryOrg.id}) 통합 및 삭제 완료`);
+          } catch (delErr) {
+            console.warn(`[Firebase] 중복 조직(${dup.id}) 삭제 권한 대기:`, delErr);
+          }
+        }
+
+        const updatedAdmins = Array.from(mergedAdmins);
+        primaryOrg.adminUids = updatedAdmins;
+        try {
+          await updateDoc(doc(db, 'orgs', primaryOrg.id), { adminUids: updatedAdmins });
+        } catch (_) {}
+
+        canonicalOrgs.push(primaryOrg);
+      }
+
+      return canonicalOrgs;
+    } catch (err) {
+      console.warn('[Firebase] 중복 조직 자동 정리 중 오류:', err);
+      return null;
+    } finally {
+      setTimeout(() => { orgConsolidationPromise = null; }, 10000);
+    }
+  })();
+
+  return orgConsolidationPromise;
+}
+
+/** 유저 프로필 조회 (신규 프로젝트 이동 시 이메일 기반 프로필/조직 자동 승계 및 구 UID 중복 문서 정리) */
 export async function getUserProfile(uid, email = '') {
   if (!uid) return null;
+
+  await consolidateDuplicateOrgs();
+
   const userRef = doc(db, 'users', uid);
   const snap = await getDoc(userRef);
-  
-  if (snap.exists()) {
-    return { uid, ...snap.data() };
-  }
+  const cleanEmail = (email || (snap.exists() ? snap.data().email : '') || '').toLowerCase().trim();
 
-  // UID로 찾지 못했고 이메일 정보가 있는 경우 (Firebase 프로젝트 이전 후 첫 로그인 시)
-  const cleanEmail = (email || '').toLowerCase().trim();
+  let emailDocs = [];
   if (cleanEmail) {
     try {
       const usersColl = collection(db, 'users');
       const q = query(usersColl, where('email', '==', cleanEmail));
       const emailSnap = await getDocs(q);
-      if (!emailSnap.empty) {
-        const oldDoc = emailSnap.docs[0];
-        const oldData = oldDoc.data();
-        const migratedProfile = {
-          ...oldData,
-          uid: uid,
-          updatedAt: serverTimestamp()
-        };
-
-        // 새 UID로 유저 문서 복사/승계
-        await setDoc(userRef, migratedProfile, { merge: true });
-
-        // 관리자 권한이 있는 경우 orgs의 adminUids에도 새 uid 등록
-        if (migratedProfile.orgId) {
-          try {
-            const orgRef = doc(db, 'orgs', migratedProfile.orgId);
-            const orgSnap = await getDoc(orgRef);
-            if (orgSnap.exists()) {
-              const orgData = orgSnap.data();
-              const adminUids = Array.isArray(orgData.adminUids) ? orgData.adminUids : [];
-              if ((migratedProfile.role === 'admin' || (oldDoc.id && adminUids.includes(oldDoc.id))) && !adminUids.includes(uid)) {
-                await updateDoc(orgRef, {
-                  adminUids: [...adminUids, uid]
-                });
-              }
-            }
-          } catch (e) {
-            console.warn('[Firebase] org adminUids 자동 승계 건너뜀:', e);
-          }
-        }
-
-        console.log(`[Firebase] 이전된 프로필을 새 UID(${uid})로 자동 승계 완료!`);
-        return { uid, ...migratedProfile };
-      }
+      emailDocs = emailSnap.docs;
     } catch (err) {
-      console.warn('[Firebase] 이메일 기반 프로필 승계 검색 실패:', err);
+      console.warn('[Firebase] 이메일 기반 프로필 검색 실패:', err);
     }
+  }
+
+  const otherDocs = emailDocs.filter(d => d.id !== uid);
+
+  if (otherDocs.length > 0) {
+    const currentData = snap.exists() ? snap.data() : {};
+    let mergedData = { ...currentData };
+
+    for (const oldDoc of otherDocs) {
+      const oldData = oldDoc.data();
+      mergedData = {
+        ...oldData,
+        ...mergedData,
+        role: (currentData.role === 'admin' || oldData.role === 'admin') ? 'admin' : (mergedData.role || oldData.role || 'member'),
+        status: (currentData.status === 'approved' || oldData.status === 'approved') ? 'approved' : (mergedData.status || oldData.status || 'pending'),
+        orgId: mergedData.orgId || oldData.orgId || '',
+        orgName: mergedData.orgName || oldData.orgName || ''
+      };
+    }
+
+    for (const oldDoc of otherDocs) {
+      const oldOrgId = oldDoc.data().orgId;
+      if (oldOrgId && oldOrgId !== mergedData.orgId) {
+        try {
+          const checkOldOrg = await getDoc(doc(db, 'orgs', oldOrgId));
+          if (checkOldOrg.exists()) {
+            mergedData.orgId = oldOrgId;
+            mergedData.orgName = checkOldOrg.data().name || mergedData.orgName;
+          }
+        } catch (_) {}
+      }
+    }
+
+    const migratedProfile = {
+      ...mergedData,
+      uid: uid,
+      email: cleanEmail || mergedData.email || '',
+      updatedAt: serverTimestamp()
+    };
+
+    await setDoc(userRef, migratedProfile, { merge: true });
+
+    if (migratedProfile.orgId) {
+      try {
+        const orgRef = doc(db, 'orgs', migratedProfile.orgId);
+        const orgSnap = await getDoc(orgRef);
+        if (orgSnap.exists()) {
+          const orgData = orgSnap.data();
+          const oldIds = otherDocs.map(d => d.id);
+          let adminUids = Array.isArray(orgData.adminUids) ? [...orgData.adminUids] : [];
+          const wasAdmin = migratedProfile.role === 'admin' || oldIds.some(id => adminUids.includes(id));
+          adminUids = adminUids.filter(id => !oldIds.includes(id));
+          if (wasAdmin && !adminUids.includes(uid)) {
+            adminUids.push(uid);
+          }
+          await updateDoc(orgRef, { adminUids });
+        }
+      } catch (e) {
+        console.warn('[Firebase] org adminUids 자동 승계 건너뜀:', e);
+      }
+    }
+
+    for (const oldDoc of otherDocs) {
+      try {
+        await deleteDoc(doc(db, 'users', oldDoc.id));
+        console.log(`[Firebase] 구 UID 중복 유저 문서(${oldDoc.id}) 정리 완료`);
+      } catch (delErr) {
+        console.warn('[Firebase] 구 UID 유저 문서 삭제 실패:', delErr);
+      }
+    }
+
+    return { uid, ...migratedProfile };
+  }
+
+  if (snap.exists()) {
+    return { uid, ...snap.data() };
   }
 
   return null;
 }
 
-/** 모든 조직(교회) 목록 조회 (가입 신청 시 선택용) */
+/** 모든 조직(교회) 목록 조회 (가입 신청 시 선택용 - 중복 이름 자동 통합 및 제거) */
 export async function getOrganizationList() {
+  const consolidated = await consolidateDuplicateOrgs();
+  if (Array.isArray(consolidated) && consolidated.length > 0) {
+    return consolidated;
+  }
+
   const orgsColl = collection(db, 'orgs');
   const snap = await getDocs(orgsColl);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const rawList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const uniqueByName = new Map();
+  for (const org of rawList) {
+    const key = (org.name || '').trim();
+    if (!key) continue;
+    if (!uniqueByName.has(key)) {
+      uniqueByName.set(key, org);
+    }
+  }
+  return Array.from(uniqueByName.values());
 }
 
 /**
- * 신규 조직 생성 (생성자가 최초 admin이 되고 즉시 approved)
+ * 신규 조직 생성 (동일 이름 조직이 이미 존재하면 중복 생성하지 않고 기존 조직과 연결)
  */
 export async function createOrganization({ orgName, user }) {
   if (!user || !user.uid) throw new Error('인증된 유저 정보가 필요합니다.');
-  
-  const orgRef = await addDoc(collection(db, 'orgs'), {
-    name: orgName.trim(),
-    adminUids: [user.uid],
-    createdAt: serverTimestamp()
-  });
+  const trimmedName = orgName.trim();
 
-  const orgId = orgRef.id;
+  const existingOrgs = await getOrganizationList();
+  const matchedOrg = existingOrgs.find(o => (o.name || '').trim().toLowerCase() === trimmedName.toLowerCase());
 
-  // 유저 문서 저장: admin / approved
+  let orgId;
+  if (matchedOrg) {
+    orgId = matchedOrg.id;
+    const adminUids = Array.isArray(matchedOrg.adminUids) ? [...matchedOrg.adminUids] : [];
+    if (!adminUids.includes(user.uid)) {
+      adminUids.push(user.uid);
+      try {
+        await updateDoc(doc(db, 'orgs', orgId), { adminUids });
+      } catch (_) {}
+    }
+  } else {
+    const orgRef = await addDoc(collection(db, 'orgs'), {
+      name: trimmedName,
+      adminUids: [user.uid],
+      createdAt: serverTimestamp()
+    });
+    orgId = orgRef.id;
+  }
+
   await setDoc(doc(db, 'users', user.uid), {
     email: user.email,
     displayName: user.displayName || user.email.split('@')[0],
     photoURL: user.photoURL || '',
     orgId: orgId,
-    orgName: orgName.trim(),
+    orgName: trimmedName,
     role: 'admin',
     status: 'approved',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
 
-  return { orgId, orgName };
+  return { orgId, orgName: trimmedName };
 }
 
 /**
@@ -248,13 +423,21 @@ export async function requestJoinOrganization({ orgId, orgName, user }) {
 }
 
 /**
- * 조직 관리자: 승인 대기 유저 목록 조회
+ * 조직 관리자: 승인 대기 유저 목록 조회 (이메일 기준 중복 제거)
  */
 export async function getPendingUsers(orgId) {
   const usersColl = collection(db, 'users');
   const q = query(usersColl, where('orgId', '==', orgId), where('status', '==', 'pending'));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  const byEmail = new Map();
+  snap.docs.forEach(d => {
+    const data = { uid: d.id, ...d.data() };
+    const key = (data.email || d.id).toLowerCase().trim();
+    if (!byEmail.has(key) || d.data().uid === d.id) {
+      byEmail.set(key, data);
+    }
+  });
+  return Array.from(byEmail.values());
 }
 
 /**
@@ -269,14 +452,34 @@ export async function approveUser(targetUid) {
 }
 
 /**
- * 소속 조직의 승인된 팀원 목록 조회 (공유 대상 선택용)
+ * 소속 조직의 승인된 팀원 목록 조회 (공유 대상 선택용 - 이메일 기준 중복 제거 및 구 UID 자동 정리)
  */
 export async function getApprovedMembers(orgId) {
   if (!orgId) return [];
   const usersColl = collection(db, 'users');
   const q = query(usersColl, where('orgId', '==', orgId), where('status', '==', 'approved'));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+
+  const byEmail = new Map();
+  for (const d of snap.docs) {
+    const raw = d.data();
+    const item = { uid: d.id, ...raw };
+    const key = (raw.email || d.id).toLowerCase().trim();
+
+    if (!byEmail.has(key)) {
+      byEmail.set(key, { docId: d.id, isMigratedUid: raw.uid === d.id, item });
+    } else {
+      const prev = byEmail.get(key);
+      if (raw.uid === d.id && !prev.isMigratedUid) {
+        deleteDoc(doc(db, 'users', prev.docId)).catch(() => {});
+        byEmail.set(key, { docId: d.id, isMigratedUid: true, item });
+      } else if (prev.isMigratedUid && raw.uid !== d.id) {
+        deleteDoc(doc(db, 'users', d.id)).catch(() => {});
+      }
+    }
+  }
+
+  return Array.from(byEmail.values()).map(v => v.item);
 }
 
 // ==========================================
