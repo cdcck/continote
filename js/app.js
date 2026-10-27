@@ -5343,17 +5343,33 @@ function renderSongformOrderFlowList() {
     return;
   }
   currentOrderFlow.forEach((step, idx) => {
-    const isI = (step === 'I');
+    const isI = (step === 'I' || step.startsWith('I×') || step.startsWith('I '));
     const chip = document.createElement('span');
-    chip.className = `songform-flow-chip inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold shadow-sm cursor-grab active:cursor-grabbing hover:opacity-90 active:scale-95 transition-all select-none ${isI ? 'part-serif-i' : ''}`;
+    chip.className = `songform-flow-chip inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-bold shadow-sm cursor-grab active:cursor-grabbing hover:opacity-90 active:scale-95 transition-all select-none ${isI ? 'part-serif-i' : ''}`;
     chip.style.backgroundColor = 'var(--accent)';
     chip.style.color = '#ffffff';
     chip.style.touchAction = 'none';
     chip.style.userSelect = 'none';
     chip.style.webkitUserSelect = 'none';
     chip.dataset.flowIndex = idx;
-    chip.title = '꾹 눌러 순서 변경 · 탭하여 삭제';
-    chip.innerHTML = `<span>${escapeHtml(step)}</span><span class="text-[10px] opacity-75 font-normal ml-0.5 pointer-events-none">×</span>`;
+    chip.title = '길게 눌러 드래그하여 순서 변경 (× 탭 시 삭제)';
+    chip.innerHTML = `
+      <span class="opacity-45 text-[10px] select-none pointer-events-none -mr-0.5">⠿</span>
+      <span class="chip-label pointer-events-none leading-none">${formatStepTextHtml(step)}</span>
+      <button type="button" class="chip-del-btn flex items-center justify-center w-4 h-4 ml-0.5 rounded-full hover:bg-black/25 active:scale-90 transition-all text-[11px] leading-none opacity-80 hover:opacity-100" title="이 파트 삭제" aria-label="삭제">×</button>
+    `;
+
+    // 삭제 버튼 클릭 이벤트 (버블링 차단 및 안전 삭제)
+    const delBtn = chip.querySelector('.chip-del-btn');
+    if (delBtn) {
+      delBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        currentOrderFlow.splice(idx, 1);
+        renderSongformOrderFlowList();
+      });
+    }
 
     let isDragging = false;
     let hasDragged = false;
@@ -5369,7 +5385,7 @@ function renderSongformOrderFlowList() {
       isDragging = true;
       hasDragged = true;
       if (navigator.vibrate) {
-        try { navigator.vibrate(35); } catch (_) {}
+        try { navigator.vibrate(30); } catch (_) {}
       }
 
       chip.style.opacity = '0.35';
@@ -5380,11 +5396,13 @@ function renderSongformOrderFlowList() {
       ghostEl.style.backgroundColor = 'var(--accent)';
       ghostEl.style.color = '#ffffff';
       ghostEl.style.boxShadow = '0 10px 25px -4px rgba(0, 0, 0, 0.45), 0 0 16px var(--accent)';
-      ghostEl.style.transform = 'translate(-50%, -50%) scale(1.15)';
+      ghostEl.style.transform = (pointerId !== null && window.matchMedia && window.matchMedia('(pointer: coarse)').matches)
+        ? 'translate(-50%, -120%) scale(1.15)'
+        : 'translate(-50%, -50%) scale(1.12)';
       ghostEl.style.left = `${startX}px`;
       ghostEl.style.top = `${startY}px`;
       ghostEl.style.transition = 'transform 0.08s ease-out';
-      ghostEl.innerHTML = `<span>${escapeHtml(step)}</span><span class="text-[10px] opacity-90 font-mono">⠿</span>`;
+      ghostEl.innerHTML = `<span>${formatStepTextHtml(step)}</span><span class="text-[10px] opacity-90 font-mono">⠿</span>`;
       document.body.appendChild(ghostEl);
 
       dropIndicator = document.createElement('div');
@@ -5397,6 +5415,7 @@ function renderSongformOrderFlowList() {
     };
 
     const onPointerDown = (e) => {
+      if (e.target.closest('.chip-del-btn')) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       pointerId = e.pointerId;
       startX = e.clientX;
@@ -5405,7 +5424,7 @@ function renderSongformOrderFlowList() {
       hasDragged = false;
       targetSlot = idx;
 
-      holdTimer = setTimeout(startDrag, 220);
+      holdTimer = setTimeout(startDrag, 180);
 
       const onPointerMove = (me) => {
         if (me.pointerId !== pointerId) return;
@@ -5413,12 +5432,10 @@ function renderSongformOrderFlowList() {
         const dy = me.clientY - startY;
 
         if (!isDragging) {
-          if (me.pointerType === 'mouse' && Math.hypot(dx, dy) > 5) {
+          // 마우스든 터치든 6px 이상 이동 시 즉시 드래그 시작 (타이머 취소 방지)
+          if (Math.hypot(dx, dy) >= 6) {
             clearTimeout(holdTimer);
             startDrag();
-          } else if (Math.hypot(dx, dy) > 8) {
-            clearTimeout(holdTimer);
-            return;
           } else {
             return;
           }
@@ -5452,12 +5469,17 @@ function renderSongformOrderFlowList() {
           dropIndicator.parentNode.removeChild(dropIndicator);
           dropIndicator = null;
         }
+        chip.style.opacity = '';
+        chip.style.transform = '';
 
         if (isDragging) {
           if (targetSlot !== idx && targetSlot !== idx + 1) {
             const [movedItem] = currentOrderFlow.splice(idx, 1);
             const newIndex = (targetSlot > idx) ? (targetSlot - 1) : targetSlot;
             currentOrderFlow.splice(newIndex, 0, movedItem);
+            if (navigator.vibrate) {
+              try { navigator.vibrate(15); } catch (_) {}
+            }
           }
           renderSongformOrderFlowList();
         }
@@ -5471,13 +5493,11 @@ function renderSongformOrderFlowList() {
     chip.addEventListener('pointerdown', onPointerDown);
 
     chip.addEventListener('click', (e) => {
-      if (hasDragged || isDragging) {
+      if (hasDragged || isDragging || e.target.closest('.chip-del-btn')) {
         e.preventDefault();
         e.stopPropagation();
         return;
       }
-      currentOrderFlow.splice(idx, 1);
-      renderSongformOrderFlowList();
     });
 
     els.songformFlowList.appendChild(chip);
