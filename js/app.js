@@ -3061,6 +3061,7 @@ export async function openViewerForLibrarySong(song, libraryList = null) {
   const list = libraryList || state.allSongs;
   const songIdx = list.findIndex(s => s.id === song.id);
   state.currentContiId = null; // 마스터 보관함 모드 진입 시 콘티 ID 반드시 초기화
+  state.activeMenu = 'library'; // [핵심] 보관함 악보 뷰어는 반드시 library 메뉴로 동기화
   state.viewerReturnView = 'songLibrary';
   state.songs = list;
   state.currentIndex = songIdx !== -1 ? songIdx : 0;
@@ -3071,6 +3072,7 @@ export async function openViewerForLibrarySong(song, libraryList = null) {
     await loadStickers(song.id);
   }
   resetZoom();
+  saveCurrentMenuSession();
   applyUIState();
   await renderAll();
   pushAppState();
@@ -3442,9 +3444,12 @@ export function saveCurrentMenuSession() {
 
   // user / leader 탭 세션 오염 방지
   ['user', 'leader'].forEach(m => {
-    if (menuSessions[m] && (menuSessions[m].viewLevel === 'songLibrary' || menuSessions[m].viewLevel === 'settings')) {
-      menuSessions[m].viewLevel = 'contiList';
-      menuSessions[m].currentContiId = null;
+    if (menuSessions[m]) {
+      if (menuSessions[m].viewLevel === 'songLibrary' || menuSessions[m].viewLevel === 'settings') {
+        menuSessions[m].viewLevel = 'contiList';
+        menuSessions[m].currentContiId = null;
+      }
+      menuSessions[m].viewerReturnView = null;
     }
   });
 
@@ -3748,9 +3753,12 @@ export async function switchToMenu(targetMenu, isFromHistory = false) {
   // 3. 대상 메뉴의 이전 세션 복원
   const session = menuSessions[targetMenu];
   if (session) {
-    if ((targetMenu === 'user' || targetMenu === 'leader') && (session.viewLevel === 'songLibrary' || session.viewLevel === 'settings')) {
-      session.viewLevel = 'contiList';
-      session.currentContiId = null;
+    if (targetMenu === 'user' || targetMenu === 'leader') {
+      if (session.viewLevel === 'songLibrary' || session.viewLevel === 'settings') {
+        session.viewLevel = 'contiList';
+        session.currentContiId = null;
+      }
+      session.viewerReturnView = null; // [방어벽] 인도자/사용자 메뉴에서는 보관함 복귀 플래그 원천 차단
     }
     state.viewLevel = session.viewLevel;
     state.currentContiId = session.currentContiId;
@@ -3833,6 +3841,13 @@ export function applyUIState() {
   const currentSong = getCurrentSong();
   const hasSongs = state.songs.length > 0;
   const isLeader = state.activeMenu === 'leader';
+
+  // [메뉴-뷰 레벨 상태 불일치 자동 치유 가드]
+  // leader 또는 user 메뉴 상태에서는 절대로 songLibrary 화면으로 어긋나지 않도록 방어
+  if ((state.activeMenu === 'leader' || state.activeMenu === 'user') && state.viewLevel === 'songLibrary') {
+    state.viewLevel = state.currentContiId ? 'songList' : 'contiList';
+    state.viewerReturnView = null;
+  }
 
   // 뷰어 모드가 아닐 때 뷰어 메트로놈이 실행 중이면 자동 정지 및 전용 버튼 숨김
   if (state.viewLevel !== 'viewer') {
@@ -5282,44 +5297,44 @@ function addSongformStep(step) {
   renderSongformOrderFlowList();
 }
 
-function calculateSongformDropSlot(clientX, clientY, chipEls) {
+function calculateSongformDropSlot(clientX, clientY, currentIdx) {
+  const chipEls = Array.from(els.songformFlowList.querySelectorAll('.songform-flow-chip'));
   if (!chipEls.length) return 0;
 
-  const chipsWithInfo = chipEls.map((el, i) => {
-    const r = el.getBoundingClientRect();
+  // 드래그 중인 자기 자신을 제외한 나머지 칩들과 비교
+  const otherChips = chipEls
+    .map((el, i) => ({ el, origIdx: Number(el.dataset.flowIndex ?? i), rect: el.getBoundingClientRect() }))
+    .filter(c => c.origIdx !== currentIdx);
+
+  if (!otherChips.length) return 0;
+
+  // 같은 행(row)에 있는 칩들 필터링 (수직 거리 20px 이내)
+  const chipsWithVDist = otherChips.map(c => {
     let vDist = 0;
-    if (clientY < r.top) vDist = r.top - clientY;
-    else if (clientY > r.bottom) vDist = clientY - r.bottom;
-    return { el, index: i, rect: r, vDist };
+    if (clientY < c.rect.top) vDist = c.rect.top - clientY;
+    else if (clientY > c.rect.bottom) vDist = clientY - c.rect.bottom;
+    return { ...c, vDist };
   });
 
-  const minVDist = Math.min(...chipsWithInfo.map(c => c.vDist));
-  const rowChips = chipsWithInfo.filter(c => c.vDist <= minVDist + 12);
-  if (!rowChips.length) return chipEls.length;
+  const minVDist = Math.min(...chipsWithVDist.map(c => c.vDist));
+  const rowChips = chipsWithVDist.filter(c => c.vDist <= minVDist + 16);
+  const targetRow = rowChips.length ? rowChips : chipsWithVDist;
+  targetRow.sort((a, b) => a.rect.left - b.rect.left);
 
-  rowChips.sort((a, b) => a.rect.left - b.rect.left);
-  const firstInRow = rowChips[0];
-  const lastInRow = rowChips[rowChips.length - 1];
-
-  if (clientX <= firstInRow.rect.left + firstInRow.rect.width * 0.4) {
-    return firstInRow.index;
-  }
-  if (clientX >= lastInRow.rect.right - lastInRow.rect.width * 0.4) {
-    return lastInRow.index + 1;
-  }
-
-  let slot = firstInRow.index;
-  for (const c of rowChips) {
+  for (let i = 0; i < targetRow.length; i++) {
+    const c = targetRow[i];
     const midX = c.rect.left + c.rect.width / 2;
-    if (clientX >= midX) {
-      slot = c.index + 1;
+    if (clientX < midX) {
+      return c.origIdx;
     }
   }
-  return Math.max(0, Math.min(chipEls.length, slot));
+  const last = targetRow[targetRow.length - 1];
+  return last.origIdx + 1;
 }
 
-function updateSongformDropIndicator(slot, chipEls, dropIndicator) {
+function updateSongformDropIndicator(slot, dropIndicator) {
   if (!dropIndicator || !els.songformFlowList) return;
+  const chipEls = Array.from(els.songformFlowList.querySelectorAll('.songform-flow-chip'));
   if (slot <= 0) {
     if (els.songformFlowList.firstChild !== dropIndicator) {
       els.songformFlowList.insertBefore(dropIndicator, els.songformFlowList.firstChild);
@@ -5345,21 +5360,61 @@ function renderSongformOrderFlowList() {
   currentOrderFlow.forEach((step, idx) => {
     const isI = (step === 'I' || step.startsWith('I×') || step.startsWith('I '));
     const chip = document.createElement('span');
-    chip.className = `songform-flow-chip inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-bold shadow-sm cursor-grab active:cursor-grabbing hover:opacity-90 active:scale-95 transition-all select-none ${isI ? 'part-serif-i' : ''}`;
+    chip.className = `songform-flow-chip inline-flex items-center gap-1 pl-2 pr-1.5 py-1 rounded-full text-xs font-bold shadow-sm cursor-grab active:cursor-grabbing hover:opacity-90 active:scale-95 transition-all select-none ${isI ? 'part-serif-i' : ''}`;
     chip.style.backgroundColor = 'var(--accent)';
     chip.style.color = '#ffffff';
     chip.style.touchAction = 'none';
     chip.style.userSelect = 'none';
     chip.style.webkitUserSelect = 'none';
     chip.dataset.flowIndex = idx;
-    chip.title = '길게 눌러 드래그하여 순서 변경 (× 탭 시 삭제)';
+    chip.title = '드래그 또는 ◀ ▶ 탭하여 순서 변경 (× 탭 시 삭제)';
+
+    const isFirst = (idx === 0);
+    const isLast = (idx === currentOrderFlow.length - 1);
+
     chip.innerHTML = `
-      <span class="opacity-45 text-[10px] select-none pointer-events-none -mr-0.5">⠿</span>
-      <span class="chip-label pointer-events-none leading-none">${formatStepTextHtml(step)}</span>
+      <span class="opacity-55 text-[10px] select-none pointer-events-none mr-0.5">⠿</span>
+      ${!isFirst ? `<button type="button" class="chip-move-btn chip-move-left flex items-center justify-center w-4 h-4 rounded-full hover:bg-black/25 active:scale-90 transition-all text-[9px] leading-none opacity-80 hover:opacity-100" title="앞으로 한 칸 이동" aria-label="왼쪽 이동">◀</button>` : ''}
+      <span class="chip-label pointer-events-none leading-none px-0.5">${formatStepTextHtml(step)}</span>
+      ${!isLast ? `<button type="button" class="chip-move-btn chip-move-right flex items-center justify-center w-4 h-4 rounded-full hover:bg-black/25 active:scale-90 transition-all text-[9px] leading-none opacity-80 hover:opacity-100" title="뒤로 한 칸 이동" aria-label="오른쪽 이동">▶</button>` : ''}
       <button type="button" class="chip-del-btn flex items-center justify-center w-4 h-4 ml-0.5 rounded-full hover:bg-black/25 active:scale-90 transition-all text-[11px] leading-none opacity-80 hover:opacity-100" title="이 파트 삭제" aria-label="삭제">×</button>
     `;
 
-    // 삭제 버튼 클릭 이벤트 (버블링 차단 및 안전 삭제)
+    // 1. 좌측으로 한 칸 이동 (원터치 버튼)
+    const leftBtn = chip.querySelector('.chip-move-left');
+    if (leftBtn) {
+      leftBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      leftBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (idx > 0) {
+          const temp = currentOrderFlow[idx];
+          currentOrderFlow[idx] = currentOrderFlow[idx - 1];
+          currentOrderFlow[idx - 1] = temp;
+          if (navigator.vibrate) try { navigator.vibrate(15); } catch (_) {}
+          renderSongformOrderFlowList();
+        }
+      });
+    }
+
+    // 2. 우측으로 한 칸 이동 (원터치 버튼)
+    const rightBtn = chip.querySelector('.chip-move-right');
+    if (rightBtn) {
+      rightBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      rightBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (idx < currentOrderFlow.length - 1) {
+          const temp = currentOrderFlow[idx];
+          currentOrderFlow[idx] = currentOrderFlow[idx + 1];
+          currentOrderFlow[idx + 1] = temp;
+          if (navigator.vibrate) try { navigator.vibrate(15); } catch (_) {}
+          renderSongformOrderFlowList();
+        }
+      });
+    }
+
+    // 3. 삭제 버튼 클릭 이벤트 (버블링 차단 및 안전 삭제)
     const delBtn = chip.querySelector('.chip-del-btn');
     if (delBtn) {
       delBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -5371,6 +5426,7 @@ function renderSongformOrderFlowList() {
       });
     }
 
+    // 4. 모바일/태블릿 터치 & 마우스 드래그 앤 드롭 엔진
     let isDragging = false;
     let hasDragged = false;
     let holdTimer = null;
@@ -5385,7 +5441,7 @@ function renderSongformOrderFlowList() {
       isDragging = true;
       hasDragged = true;
       if (navigator.vibrate) {
-        try { navigator.vibrate(30); } catch (_) {}
+        try { navigator.vibrate(25); } catch (_) {}
       }
 
       chip.style.opacity = '0.35';
@@ -5397,7 +5453,7 @@ function renderSongformOrderFlowList() {
       ghostEl.style.color = '#ffffff';
       ghostEl.style.boxShadow = '0 10px 25px -4px rgba(0, 0, 0, 0.45), 0 0 16px var(--accent)';
       ghostEl.style.transform = (pointerId !== null && window.matchMedia && window.matchMedia('(pointer: coarse)').matches)
-        ? 'translate(-50%, -120%) scale(1.15)'
+        ? 'translate(-50%, -125%) scale(1.15)'
         : 'translate(-50%, -50%) scale(1.12)';
       ghostEl.style.left = `${startX}px`;
       ghostEl.style.top = `${startY}px`;
@@ -5410,21 +5466,27 @@ function renderSongformOrderFlowList() {
       dropIndicator.innerHTML = '<span class="w-1.5 h-6 rounded-full animate-pulse shadow-md" style="background:var(--accent);box-shadow:0 0 10px var(--accent)"></span>';
       dropIndicator.style.margin = '0 4px';
 
-      const chipEls = Array.from(els.songformFlowList.querySelectorAll('.songform-flow-chip'));
-      updateSongformDropIndicator(idx, chipEls, dropIndicator);
+      updateSongformDropIndicator(idx, dropIndicator);
     };
 
     const onPointerDown = (e) => {
-      if (e.target.closest('.chip-del-btn')) return;
+      if (e.target.closest('.chip-del-btn') || e.target.closest('.chip-move-btn')) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+        try { e.preventDefault(); e.stopPropagation(); } catch (_) {}
+      }
       pointerId = e.pointerId;
+      try {
+        chip.setPointerCapture(e.pointerId);
+      } catch (_) {}
+
       startX = e.clientX;
       startY = e.clientY;
       isDragging = false;
       hasDragged = false;
       targetSlot = idx;
 
-      holdTimer = setTimeout(startDrag, 180);
+      holdTimer = setTimeout(startDrag, 140);
 
       const onPointerMove = (me) => {
         if (me.pointerId !== pointerId) return;
@@ -5432,8 +5494,7 @@ function renderSongformOrderFlowList() {
         const dy = me.clientY - startY;
 
         if (!isDragging) {
-          // 마우스든 터치든 6px 이상 이동 시 즉시 드래그 시작 (타이머 취소 방지)
-          if (Math.hypot(dx, dy) >= 6) {
+          if (Math.hypot(dx, dy) >= 5) {
             clearTimeout(holdTimer);
             startDrag();
           } else {
@@ -5441,25 +5502,31 @@ function renderSongformOrderFlowList() {
           }
         }
 
-        me.preventDefault();
+        try { me.preventDefault(); } catch (_) {}
         if (ghostEl) {
           ghostEl.style.left = `${me.clientX}px`;
           ghostEl.style.top = `${me.clientY}px`;
         }
 
-        const chipEls = Array.from(els.songformFlowList.querySelectorAll('.songform-flow-chip'));
-        targetSlot = calculateSongformDropSlot(me.clientX, me.clientY, chipEls);
+        targetSlot = calculateSongformDropSlot(me.clientX, me.clientY, idx);
         if (dropIndicator) {
-          updateSongformDropIndicator(targetSlot, chipEls, dropIndicator);
+          updateSongformDropIndicator(targetSlot, dropIndicator);
         }
       };
 
       const onPointerUp = (ue) => {
         if (ue.pointerId !== pointerId) return;
         clearTimeout(holdTimer);
+        try {
+          chip.releasePointerCapture(ue.pointerId);
+        } catch (_) {}
+
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
         window.removeEventListener('pointercancel', onPointerUp);
+        chip.removeEventListener('pointermove', onPointerMove);
+        chip.removeEventListener('pointerup', onPointerUp);
+        chip.removeEventListener('pointercancel', onPointerUp);
 
         if (ghostEl && ghostEl.parentNode) {
           ghostEl.parentNode.removeChild(ghostEl);
@@ -5473,18 +5540,22 @@ function renderSongformOrderFlowList() {
         chip.style.transform = '';
 
         if (isDragging) {
-          if (targetSlot !== idx && targetSlot !== idx + 1) {
+          const newIndex = (targetSlot > idx) ? (targetSlot - 1) : targetSlot;
+          if (newIndex !== idx && newIndex >= 0 && newIndex < currentOrderFlow.length) {
             const [movedItem] = currentOrderFlow.splice(idx, 1);
-            const newIndex = (targetSlot > idx) ? (targetSlot - 1) : targetSlot;
             currentOrderFlow.splice(newIndex, 0, movedItem);
             if (navigator.vibrate) {
               try { navigator.vibrate(15); } catch (_) {}
             }
+            renderSongformOrderFlowList();
           }
-          renderSongformOrderFlowList();
         }
       };
 
+      // 캡처 이벤트는 chip으로 오며 버블링도 지원하도록 바인딩
+      chip.addEventListener('pointermove', onPointerMove, { passive: false });
+      chip.addEventListener('pointerup', onPointerUp);
+      chip.addEventListener('pointercancel', onPointerUp);
       window.addEventListener('pointermove', onPointerMove, { passive: false });
       window.addEventListener('pointerup', onPointerUp);
       window.addEventListener('pointercancel', onPointerUp);
@@ -5493,7 +5564,7 @@ function renderSongformOrderFlowList() {
     chip.addEventListener('pointerdown', onPointerDown);
 
     chip.addEventListener('click', (e) => {
-      if (hasDragged || isDragging || e.target.closest('.chip-del-btn')) {
+      if (hasDragged || isDragging || e.target.closest('.chip-del-btn') || e.target.closest('.chip-move-btn')) {
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -6627,7 +6698,7 @@ function wireEventListeners() {
       song.songform = [...currentOrderFlow];
       song.updatedAt = now;
 
-      const isFromLibrary = (state.viewerReturnView === 'songLibrary');
+      const isFromLibrary = (state.activeMenu === 'library' || state.viewerReturnView === 'songLibrary') && !state.currentContiId;
 
       if (isFromLibrary) {
         // [1. 마스터 악보 보관함(곡 목록) 모드]
@@ -6679,7 +6750,8 @@ function wireEventListeners() {
     currentOrderSong = null;
     hide(els.songformOrderModal);
 
-    // 현재 화면 상태에 맞게 안전하게 리렌더링 (뷰어 화면 유지 보장)
+    // 현재 화면 상태에 맞게 안전하게 리렌더링 및 세션 보존 (뷰어 화면 유지 보장)
+    saveCurrentMenuSession();
     if (state.viewLevel === 'viewer') {
       await renderAll();
     } else if (state.viewLevel === 'songList') {
