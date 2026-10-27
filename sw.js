@@ -2,7 +2,7 @@
  * ContiNote - Service Worker (PWA Offline & Install Support)
  */
 
-const CACHE_NAME = 'continote-v31';
+const CACHE_NAME = 'continote-v32';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -84,3 +84,11 @@ self.addEventListener('fetch', (event) => {
       })
   );
 });
+
+// 클라이언트로부터 즉시 활성화 요청 수신
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+

@@ -7278,10 +7278,104 @@ function registerServiceWorker() {
       navigator.serviceWorker.register('./sw.js')
         .then((reg) => {
           console.log('[PWA] Service Worker 등록 성공:', reg.scope);
+
+          // 1. 이미 새 버전이 대기 중(waiting)인 경우 즉시 업데이트 토스트 표시
+          if (reg.waiting) {
+            showPWAUpdateToast(reg.waiting);
+            return;
+          }
+
+          // 2. 새 버전 다운로드 감지 (updatefound -> installed)
+          reg.addEventListener('updatefound', () => {
+            const newWorker = reg.installing;
+            if (!newWorker) return;
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                showPWAUpdateToast(newWorker);
+              }
+            });
+          });
         })
         .catch((err) => {
           console.warn('[PWA] Service Worker 등록 실패 (로컬/비HTTPS 환경 가능):', err);
         });
+
+      // 3. 새 서비스 워커가 활성화(controllerchange)되었을 때 자동 새로고침 방지 플래그 관리
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+
+      // 4. 태블릿/모바일에서 앱으로 복귀 시(visibilitychange) 백그라운드 업데이트 확인
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          navigator.serviceWorker.getRegistration().then((reg) => {
+            reg?.update().catch(() => {});
+          });
+        }
+      });
+    });
+  }
+}
+
+/**
+ * PWA 새로운 배포 버전 감지 시 상단 플로팅 업데이트 알림 토스트 표시
+ */
+function showPWAUpdateToast(worker) {
+  if (document.getElementById('pwaUpdateToast')) return;
+
+  const toast = document.createElement('div');
+  toast.id = 'pwaUpdateToast';
+  toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-[100000] max-w-[92vw] sm:max-w-md w-full px-4 py-3 rounded-2xl shadow-2xl border flex items-center justify-between gap-3 select-none backdrop-blur-md transition-all animate-bounce-in';
+  toast.style.background = 'var(--surface)';
+  toast.style.borderColor = 'var(--accent)';
+  toast.style.boxShadow = '0 12px 36px -4px rgba(0,0,0,0.35), 0 0 16px var(--accent-soft)';
+
+  toast.innerHTML = `
+    <div class="flex items-center gap-2.5 min-w-0">
+      <span class="text-xl shrink-0">🚀</span>
+      <div class="min-w-0">
+        <div class="text-xs sm:text-sm font-bold text-zinc-900 dark:text-zinc-100 truncate">새로운 버전이 준비되었습니다!</div>
+        <div class="text-[11px] text-zinc-500 dark:text-zinc-400">탭하여 최신 업데이트를 적용하세요</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-1.5 shrink-0">
+      <button id="pwaUpdateApplyBtn" type="button" class="px-3 py-1.5 rounded-xl text-white font-bold text-xs shadow-md active:scale-95 transition-all flex items-center gap-1"
+              style="background:var(--accent)">
+        <span>지금 업데이트</span>
+      </button>
+      <button id="pwaUpdateDismissBtn" type="button" class="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-90 transition-all text-sm leading-none" title="나중에">
+        ×
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(toast);
+
+  // [지금 업데이트] 클릭 이벤트
+  const applyBtn = toast.querySelector('#pwaUpdateApplyBtn');
+  if (applyBtn) {
+    applyBtn.addEventListener('click', () => {
+      applyBtn.disabled = true;
+      applyBtn.innerHTML = `<span>적용 중...</span>`;
+      if (worker) {
+        worker.postMessage({ type: 'SKIP_WAITING' });
+      }
+      setTimeout(() => {
+        window.location.reload();
+      }, 350);
+    });
+  }
+
+  // [×] 닫기 클릭 이벤트
+  const dismissBtn = toast.querySelector('#pwaUpdateDismissBtn');
+  if (dismissBtn) {
+    dismissBtn.addEventListener('click', () => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translate(-50%, -20px)';
+      setTimeout(() => toast.remove(), 200);
     });
   }
 }
