@@ -290,7 +290,7 @@ html.dark .conti-date-chip {
   box-shadow: 0 calc(1px * var(--scale-factor)) calc(3px * var(--scale-factor)) rgba(0, 0, 0, 0.5);
 }
 
-/* 텍스트 메모: 투명한 배경에 Noto Sans KR Bold 텍스트만 표시 */
+/* 텍스트 메모: 평상시에는 투명한 배경에 순수 텍스트만 표시 (테두리/블러 없음) */
 .sticker.text-memo {
   --scale-factor: calc(var(--sheet-scale, 1) * var(--sticker-scale, 1));
   padding: 0.15rem 0.35rem;
@@ -299,12 +299,64 @@ html.dark .conti-date-chip {
   font-family: 'Noto Sans KR', -apple-system, sans-serif;
   font-size: calc(0.95rem * var(--sheet-scale, 1));
   font-weight: 700;
-  border: none;
+  border: 1.5px solid transparent;
+  border-radius: 0.5rem;
   box-shadow: none;
   max-width: 60vw;
   white-space: normal;
   word-break: break-word;
   text-shadow: 0 0 3px var(--bg), 0 0 6px var(--bg), 1px 1px 2px rgba(0, 0, 0, 0.2);
+  transition: border-color 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
+  user-select: none;
+}
+
+/* 텍스트 메모 탭/선택 시: 은은한 액센트 점선 테두리 및 반투명 블러 배경 활성화 */
+.sticker.text-memo.selected {
+  border: 1.5px dashed var(--accent);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.18), 0 0 0 2px var(--accent-soft);
+  z-index: 25;
+}
+
+.dark .sticker.text-memo.selected {
+  border-color: var(--accent);
+  background: rgba(24, 24, 27, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.55), 0 0 0 2px var(--accent-soft);
+}
+
+/* 텍스트 메모 플로팅 툴팁 (수정 / 삭제) */
+.text-memo-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.25), 0 0 10px rgba(0, 0, 0, 0.05);
+  z-index: 35;
+  white-space: nowrap;
+  animation: tooltipFadeIn 0.12s ease-out;
+  pointer-events: auto;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 4px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
 }
 
 /* 스티커 삭제 뱃지 */

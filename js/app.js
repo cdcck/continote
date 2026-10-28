@@ -86,7 +86,7 @@ const DOM_IDS = [
   'addContiSessionRowBtn', 'contiSessionList', // 콘티 모달 내 세션 배정 동적 요소
   'settingsView', 'themeSystemBtn', 'themeLightBtn', 'themeDarkBtn', 'navHBtn', 'navVBtn', 'pageAnimSmoothBtn', 'pageAnimInstantBtn', 'viewCount1Btn', 'viewCount2Btn', 'songformManageList', 'newLabelInput', 'addLabelBtn', 'cloudSyncStatusBadge', 'cloudUserOrgDisplay', 'cloudUserEmailDisplay',
   'themeManageList', 'newThemeInput', 'addThemeBtn',
-  'textMemoModal', 'textMemoSongSelectBar', 'textMemoSongLeftBtn', 'textMemoSongRightBtn', 'textMemoInput', 'textMemoAddBtn',
+  'textMemoModal', 'textMemoModalTitle', 'textMemoSongSelectBar', 'textMemoSongLeftBtn', 'textMemoSongRightBtn', 'textMemoInput', 'textMemoAddBtn',
   'chordStickerModal', 'chordStickerInput', 'chordStickerBackspaceBtn', 'chordStickerClearBtn', 'chordStickerPreview', 'chordStickerAddBtn',
   'shareModal', 'shareContiTitle', 'shareMemberSearchInput', 'shareOrgMemberCount', 'shareOrgMemberList', 'shareEmailInput', 'addShareEmailBtn', 'shareEmailList', 'copyShareLinkBtn',
   'songMetaModal', 'songMetaModalTitle', 'songMetaNameInput', 'songMetaKeySelect', 'songMetaTimeSigSelect', 'songMetaTempoInput', 'songMetaBpmBtn', 'songMetaThemesContainer', 'songMetaSaveBtn',
@@ -6805,7 +6805,46 @@ function wireEventListeners() {
     }
   });
 
+  let editingTextMemoContext = null;
+
+  function openEditTextMemoModal(songId, item) {
+    editingTextMemoContext = { songId, item };
+    if (els.textMemoModalTitle) {
+      els.textMemoModalTitle.textContent = '악보 텍스트 메모 수정';
+    }
+    if (els.textMemoAddBtn) {
+      els.textMemoAddBtn.textContent = '수정 완료';
+    }
+    if (els.textMemoSongSelectBar) {
+      els.textMemoSongSelectBar.style.display = 'none';
+    }
+    if (els.textMemoInput) {
+      els.textMemoInput.value = item.label || '';
+    }
+    show(els.textMemoModal, 'flex');
+    setTimeout(() => {
+      if (els.textMemoInput) {
+        els.textMemoInput.focus();
+        els.textMemoInput.select();
+      }
+    }, 60);
+  }
+
+  window.addEventListener('continote:edit-textmemo', (e) => {
+    const { songId, item } = e.detail || {};
+    if (songId && item) {
+      openEditTextMemoModal(songId, item);
+    }
+  });
+
   els.userTextMemoBtn.addEventListener('click', () => {
+    editingTextMemoContext = null;
+    if (els.textMemoModalTitle) {
+      els.textMemoModalTitle.textContent = '악보 텍스트 메모 부착';
+    }
+    if (els.textMemoAddBtn) {
+      els.textMemoAddBtn.textContent = '악보에 부착';
+    }
     els.textMemoInput.value = '';
     const isTwoPage = isTwoPageViewActive();
     const songRight = isTwoPage ? state.songs[state.currentIndex + 1] : null;
@@ -6826,6 +6865,35 @@ function wireEventListeners() {
   els.textMemoAddBtn.addEventListener('click', () => {
     const text = els.textMemoInput.value.trim();
     if (!text) return;
+
+    // 1. 기존 텍스트 메모 내용 수정 처리
+    if (editingTextMemoContext) {
+      const { songId, item } = editingTextMemoContext;
+      item.label = text;
+      saveStickers(songId);
+      markViewerDirty();
+
+      const isTwoPage = isTwoPageViewActive();
+      const songRight = isTwoPage ? state.songs[state.currentIndex + 1] : null;
+      if (isTwoPage && songRight && songRight.id === songId) {
+        renderStickerLayer(els.stickerLayerRight, els.sheetContainerRight, songId);
+      } else {
+        renderStickerLayer(els.stickerLayer, els.sheetContainer, songId);
+      }
+
+      if (hasDriveAuth()) {
+        if (state.viewerReturnView === 'songLibrary') {
+          debounceSyncLibraryToDrive();
+        } else if (state.currentContiId) {
+          debounceSyncContiDetail(state.currentContiId);
+        }
+      }
+      editingTextMemoContext = null;
+      hide(els.textMemoModal);
+      return;
+    }
+
+    // 2. 신규 텍스트 메모 생성 처리
     const isTwoPage = isTwoPageViewActive();
     const isTargetRight = (isTwoPage && activeTextMemoTarget === 'right' && state.songs[state.currentIndex + 1]);
     const targetSong = isTargetRight ? state.songs[state.currentIndex + 1] : state.songs[state.currentIndex];
