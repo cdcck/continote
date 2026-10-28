@@ -1,6 +1,8 @@
 /**
  * ContiNote - Zoom & Pan Engine (인도자 편집 모드 전용 확대/축소 및 드래그 앤 드롭 악보 이동)
  */
+import { state } from './state.js';
+import { cancelActiveDrawing } from './canvas.js';
 
 export const zoomState = {
   scale: 1,
@@ -208,6 +210,20 @@ export function setupZoomAndPan({
     if (isLockedFn()) return;
     if (zoomState.scale <= 1) return;
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+
+    // 1) 펜(Apple Pencil, S-Pen 등)은 어떤 경우에도 악보 이동(Pan)에 관여하지 않음 (오직 필기 전용!)
+    if (e.pointerType === 'pen') return;
+
+    // 2) 손가락 터치(touch)인 경우:
+    //    만약 펜 전용 모드(stylusOnly)가 꺼져 있고 필기 모드(사용자 메뉴)라면,
+    //    악보 위에서의 1손가락 터치는 필기로 사용되므로 1손가락 악보 이동은 차단하고 2손가락 제스처로 넘김!
+    if (e.pointerType === 'touch') {
+      const isDrawingActive = !state.locked && state.activeMenu === 'user' && !state.stylusOnly;
+      if (isDrawingActive && e.target.closest('#sheetContainer, #sheetContainerRight')) {
+        return;
+      }
+    }
+
     // 스티커, 삭제 뱃지, 줌 컨트롤러, 일반 버튼/입력창 클릭 시 악보 이동 방지
     if (e.target.closest('.sticker, .del-badge, #zoomControls, button, a, input, select')) return;
 
@@ -253,41 +269,75 @@ export function setupZoomAndPan({
     }
   }, { passive: false });
 
-  // 3) 모바일 터치 제스처: 2손가락 핀치 줌 & 2손가락 패닝
+  // 3) 모바일 터치 제스처: 2손가락 핀치 줌 & 2손가락 악보 이동 (Pan)
   let initialDist = 0;
   let initialScale = 1;
   let initialMidX = 0, initialMidY = 0;
+  let lastTwoFingerMidX = 0, lastTwoFingerMidY = 0;
+  let isTwoFingerPanning = false;
 
   viewer.addEventListener('touchstart', (e) => {
     if (isLockedFn()) return;
     if (e.touches.length === 2) {
       isPanning = false;
+      isTwoFingerPanning = true;
+      cancelActiveDrawing(); // 진행 중인 1손가락 필기 즉시 중단 및 잔선 방지
+
       const t1 = e.touches[0];
       const t2 = e.touches[1];
       initialDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
       initialScale = zoomState.scale;
+
       const rect = viewer.getBoundingClientRect();
       initialMidX = (t1.clientX + t2.clientX) / 2 - rect.left;
       initialMidY = (t1.clientY + t2.clientY) / 2 - rect.top;
+
+      lastTwoFingerMidX = (t1.clientX + t2.clientX) / 2;
+      lastTwoFingerMidY = (t1.clientY + t2.clientY) / 2;
     }
   }, { passive: true });
 
   viewer.addEventListener('touchmove', (e) => {
     if (isLockedFn()) return;
-    if (e.touches.length === 2 && initialDist > 0) {
+    if (e.touches.length === 2 && isTwoFingerPanning) {
       e.preventDefault();
       const t1 = e.touches[0];
       const t2 = e.touches[1];
+
+      const currentMidX = (t1.clientX + t2.clientX) / 2;
+      const currentMidY = (t1.clientY + t2.clientY) / 2;
+      const dx = currentMidX - lastTwoFingerMidX;
+      const dy = currentMidY - lastTwoFingerMidY;
+
+      // 1. 두 손가락 드래그로 화면 이동 (Pan)
+      if (zoomState.scale > 1) {
+        zoomState.panX += dx;
+        zoomState.panY += dy;
+        clampPan();
+      }
+
+      lastTwoFingerMidX = currentMidX;
+      lastTwoFingerMidY = currentMidY;
+
+      // 2. 두 손가락 거리 변화로 핀치 줌 (Scale)
       const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-      const factor = dist / initialDist;
-      const newScale = Math.min(zoomState.maxScale, Math.max(zoomState.minScale, initialScale * factor));
-      setZoom(newScale, initialMidX, initialMidY);
+      if (initialDist > 0 && Math.abs(dist - initialDist) > 10) {
+        const factor = dist / initialDist;
+        const newScale = Math.min(zoomState.maxScale, Math.max(zoomState.minScale, initialScale * factor));
+        setZoom(newScale, initialMidX, initialMidY);
+      } else {
+        applyStageTransform(false);
+      }
     }
   }, { passive: false });
 
   viewer.addEventListener('touchend', (e) => {
     if (e.touches.length < 2) {
       initialDist = 0;
+      isTwoFingerPanning = false;
+      if (zoomState.scale > 1) {
+        applyStageTransform(true);
+      }
     }
   }, { passive: true });
 }

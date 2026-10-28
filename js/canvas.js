@@ -158,10 +158,31 @@ export async function renderUserDrawing(sheetContainer, userCanvas, songId) {
   });
 }
 
+const activeCancelFns = [];
+
+export function cancelActiveDrawing() {
+  activeCancelFns.forEach(fn => {
+    try { fn(); } catch (_) {}
+  });
+}
+
 export function setupDrawingSystem(userCanvas, onStrokeEnd) {
   if (!userCanvas) return;
   const ctx = userCanvas.getContext('2d');
   let isDrawing = false;
+  let activePointerId = null;
+
+  const cancelStroke = () => {
+    if (!isDrawing) return;
+    isDrawing = false;
+    try {
+      if (activePointerId !== null) {
+        userCanvas.releasePointerCapture(activePointerId);
+      }
+    } catch (_) {}
+    activePointerId = null;
+  };
+  activeCancelFns.push(cancelStroke);
 
   function getPoint(e) {
     const rect = userCanvas.getBoundingClientRect();
@@ -177,10 +198,19 @@ export function setupDrawingSystem(userCanvas, onStrokeEnd) {
     if (state.locked || state.activeMenu !== 'user') return;
     // [Palm Rejection: 펜 전용 모드] 손바닥/손가락 터치(touch) 필기 원천 차단 (오직 pen 및 PC mouse만 허용)
     if (state.stylusOnly && e.pointerType === 'touch') {
-      return;
+      return; // 손가락 터치는 필기하지 않고 버블링되어 줌 이동(Pan)으로 넘김!
     }
+
+    // 펜(pen), 마우스(mouse), 또는 stylusOnly=false일 때 손가락(touch)은 "필기"로 확정!
+    // 확대 상태에서 악보 이동(Pan)으로 버블링되는 것을 확실히 차단!
+    e.stopPropagation();
+
     isDrawing = true;
-    userCanvas.setPointerCapture(e.pointerId);
+    activePointerId = e.pointerId;
+    try {
+      userCanvas.setPointerCapture(e.pointerId);
+    } catch (_) {}
+
     const pt = getPoint(e);
     ctx.beginPath();
     ctx.moveTo(pt.x, pt.y);
@@ -194,6 +224,7 @@ export function setupDrawingSystem(userCanvas, onStrokeEnd) {
 
   userCanvas.addEventListener('pointermove', (e) => {
     if (!isDrawing) return;
+    e.stopPropagation();
     const pt = getPoint(e);
     ctx.lineTo(pt.x, pt.y);
     ctx.stroke();
@@ -205,6 +236,7 @@ export function setupDrawingSystem(userCanvas, onStrokeEnd) {
     try {
       userCanvas.releasePointerCapture(e.pointerId);
     } catch (_) { }
+    activePointerId = null;
     if (onStrokeEnd) onStrokeEnd();
   };
 
