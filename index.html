@@ -5,18 +5,26 @@
   <meta charset="UTF-8" />
   <meta name="viewport"
     content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
-  <title>ContiNote</title>
-  <link rel="icon"
-    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%BC%3C/text%3E%3C/svg%3E" />
+  <title>ContiNote - 스마트 예배 콘티 & 악보 노트</title>
+  <link rel="icon" type="image/svg+xml" href="icons/favicon.svg" />
+  <link rel="alternate icon" href="icons/favicon-32.png" />
+  <link rel="apple-touch-icon" href="icons/icon-512.png" />
+
+  <!-- OpenGraph / SNS 미리보기 메타 -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="ContiNote - 스마트 예배 콘티 & 악보 노트" />
+  <meta property="og:description" content="찬양팀을 위한 디지털 콘티 아카이브" />
+  <meta property="og:image" content="icons/og-image.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="icons/og-image.png" />
 
   <!-- PWA Manifest & Mobile Web App Meta -->
   <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#3A7BD5" />
+  <meta name="theme-color" content="#6B5B95" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="ContiNote" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
   <!-- 다크 모드 & 화면 세션 및 메뉴 테마 깜빡임(FOUC) 방지: 첫 페인트 전 즉시 동기 실행 -->
   <script>
@@ -183,9 +191,17 @@
       </button>
 
       <!-- 콘티 목록 상태 로고 -->
-      <div id="headerLogoArea" class="flex items-center gap-1.5 sm:gap-2 shrink-0">
-        <span class="text-xl">🎼</span>
-        <h1 class="font-bold text-base sm:text-lg tracking-tight">ContiNote</h1>
+      <div id="headerLogoArea" class="flex items-center gap-1.5 sm:gap-2 shrink-0 select-none cursor-pointer">
+        <svg viewBox="0 0 100 100" class="w-6 h-6 sm:w-7 sm:h-7 shrink-0 transition-colors" style="color:var(--accent)" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M 50 14 L 18 86" stroke-width="6"/>
+          <path d="M 50 14 L 82 86" stroke-width="6"/>
+          <path d="M 50 26 L 27 82" stroke-width="4" opacity="0.85"/>
+          <path d="M 50 26 L 73 82" stroke-width="4" opacity="0.85"/>
+          <path d="M 28 56 C 36 53, 56 49, 74 46" stroke-width="6"/>
+          <path d="M 74 46 C 79 44, 86 40, 92 34 C 88 43, 82 48, 77 50 Z" fill="currentColor" stroke-width="2"/>
+          <path d="M 49 20 C 49 14, 42 12, 40 18 C 37 25, 47 38, 48 48 C 49 58, 38 65, 36 72 C 34 80, 42 85, 48 80 C 53 76, 52 68, 45 68 C 38 68, 36 75, 42 79" stroke-width="4.5"/>
+        </svg>
+        <h1 class="font-bold text-base sm:text-lg tracking-tight transition-colors" style="color:var(--text)">ContiNote</h1>
       </div>
 
       <!-- 곡 목록 및 뷰어 상태 헤더 타이틀 -->
@@ -380,27 +396,35 @@
       <!-- 콘티 카드 목록 컨테이너 -->
       <div id="contiListContainer" class="space-y-3"></div>
 
-      <!-- 콘티 없음 안내 -->
-      <div id="contiEmptyState" class="py-16 text-center space-y-3" style="display:none">
-        <div class="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center"
-          style="background:var(--surface-2);color:var(--accent)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-8 h-8">
-            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
-            <path d="M8 7h8M8 11h5" />
+      <!-- 콘티 없음 안내 (브랜드 워터마크 엠블럼 적용) -->
+      <div id="contiEmptyState" class="relative py-14 sm:py-20 px-4 text-center rounded-2xl border overflow-hidden my-4"
+        style="display:none;background:var(--surface);border-color:var(--border)">
+        <!-- 워터마크 백그라운드 엠블럼 -->
+        <div class="absolute inset-0 flex items-center justify-end pr-4 sm:pr-10 pointer-events-none opacity-[0.07] dark:opacity-[0.05]">
+          <svg viewBox="0 0 100 100" class="w-64 h-64 sm:w-80 sm:h-80" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M 50 14 L 18 86" stroke-width="6"/>
+            <path d="M 50 14 L 82 86" stroke-width="6"/>
+            <path d="M 50 26 L 27 82" stroke-width="4"/>
+            <path d="M 50 26 L 73 82" stroke-width="4"/>
+            <path d="M 28 56 C 36 53, 56 49, 74 46" stroke-width="6"/>
+            <path d="M 74 46 C 79 44, 86 40, 92 34 C 88 43, 82 48, 77 50 Z" fill="currentColor"/>
+            <path d="M 49 20 C 49 14, 42 12, 40 18 C 37 25, 47 38, 48 48 C 49 58, 38 65, 36 72 C 34 80, 42 85, 48 80 C 53 76, 52 68, 45 68 C 38 68, 36 75, 42 79" stroke-width="5"/>
           </svg>
         </div>
-        <p class="font-bold text-base">등록된 예배 콘티가 없습니다</p>
-        <p class="text-xs sm:text-sm max-w-xs mx-auto" style="color:var(--text-dim)">
-          인도자 메뉴에서 '새 콘티'를 만들어 악보와 송폼을 구성해보세요.
-        </p>
-        <button id="emptyContiCreateBtn"
-          class="px-4 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all inline-flex items-center gap-1.5"
-          style="background:var(--accent)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          새 콘티 만들기 (인도자)
-        </button>
+        <div class="relative z-10 space-y-3">
+          <p class="font-bold text-lg sm:text-xl tracking-tight" style="color:var(--text)">등록된 콘티가 없습니다.</p>
+          <p class="text-xs sm:text-sm max-w-xs mx-auto leading-relaxed" style="color:var(--text-dim)">
+            인도자 메뉴에서 '새 콘티'를 만들어 악보와 송폼을 구성해보세요.
+          </p>
+          <button id="emptyContiCreateBtn"
+            class="px-4 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm active:scale-95 transition-all inline-flex items-center gap-1.5"
+            style="background:var(--accent)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            새 콘티 만들기 (인도자)
+          </button>
+        </div>
       </div>
     </div>
   </main>
@@ -792,10 +816,110 @@
       <div id="flowBarRow" class="w-full flex items-center px-2 sm:px-3 py-1.5 overflow-x-auto no-scrollbar">
         <div id="songformFlowDisplayArea" class="w-full flex items-center min-w-0"></div>
       </div>
+      <!-- [사용자 악보 편집 팔레트] 송폼 순서 바 바로 아래에 위치 -->
+      <div id="userPenToolbar"
+        class="flex flex-nowrap items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 border-t shrink-0 select-none transition-colors overflow-x-auto no-scrollbar relative z-30"
+        style="display:none;border-color:var(--border);background:var(--surface)">
+
+        <!-- 1. 색상 팔레트 -->
+        <div id="penColorSwatches" class="shrink-0 flex items-center gap-1 sm:gap-1.5"></div>
+
+        <!-- 2. 펜/지우개 두께 조절 버튼 -->
+        <button id="penThicknessBtn"
+          class="shrink-0 w-7 h-7 sm:w-7.5 sm:h-7.5 flex items-center justify-center rounded-xl border transition-all active:scale-95 shadow-2xs cursor-pointer"
+          style="border-color:var(--border);background:var(--surface-2)"
+          title="두께 조절">
+          <span id="penThicknessIconDot" class="rounded-full bg-current transition-all" style="width:4px;height:4px"></span>
+        </button>
+
+        <!-- 3. 지우개 버튼 (아이콘 축소) -->
+        <button id="penEraserBtn"
+          class="shrink-0 w-7 h-7 sm:w-7.5 sm:h-7.5 flex items-center justify-center rounded-xl border transition-all active:scale-95 shadow-2xs"
+          style="border-color:var(--border)" title="지우개">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5 sm:w-4 sm:h-4">
+            <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" />
+            <path d="M22 21H7" />
+            <path d="m5 11 9 9" />
+          </svg>
+        </button>
+
+        <!-- 4. 현재 곡 개인 필기 지우기 (휴지통 아이콘 축소) -->
+        <button id="penClearBtn"
+          class="shrink-0 w-7 h-7 sm:w-7.5 sm:h-7.5 flex items-center justify-center rounded-xl border transition-all active:scale-95 shadow-2xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
+          style="border-color:var(--border)" title="현재 곡 필기 전체 지우기">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5 sm:w-4 sm:h-4">
+            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" />
+          </svg>
+        </button>
+
+        <!-- 5. 수정 이력 (Undo / Redo) 버튼 -->
+        <div class="flex items-center gap-1 shrink-0">
+          <button id="penUndoBtn"
+            class="w-7 h-7 sm:w-7.5 sm:h-7.5 flex items-center justify-center rounded-xl border transition-all active:scale-95 opacity-40 cursor-not-allowed shadow-2xs"
+            style="border-color:var(--border);background:var(--surface-2)" title="실행 취소 (뒤로)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
+              <path d="M3 7v6h6"/>
+              <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+            </svg>
+          </button>
+          <button id="penRedoBtn"
+            class="w-7 h-7 sm:w-7.5 sm:h-7.5 flex items-center justify-center rounded-xl border transition-all active:scale-95 opacity-40 cursor-not-allowed shadow-2xs"
+            style="border-color:var(--border);background:var(--surface-2)" title="다시 실행 (앞으로)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
+              <path d="M21 7v6h-6"/>
+              <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="h-4 w-px bg-zinc-200 dark:bg-zinc-700 shrink-0 mx-0.5"></div>
+
+        <!-- 6. 텍스트 메모 스티커 추가 (라벨 제거, 아이콘만 표시) -->
+        <button id="userTextMemoBtn"
+          class="shrink-0 w-7 h-7 sm:w-7.5 sm:h-7.5 flex items-center justify-center rounded-xl border transition-all active:scale-95 shadow-2xs"
+          style="border-color:var(--border);background:var(--surface-2)" title="텍스트 메모 스티커 부착">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5 sm:w-4 sm:h-4">
+            <path d="M4 7V4h16v3" />
+            <path d="M9 20h6" />
+            <path d="M12 4v16" />
+          </svg>
+        </button>
+
+        <!-- 7. 펜 전용 모드 (Palm Rejection) -->
+        <button id="penStylusOnlyBtn"
+          class="shrink-0 flex items-center gap-1 px-2 py-1 rounded-xl border text-xs font-semibold active:scale-95 transition-all shadow-2xs"
+          style="border-color:var(--border);background:var(--surface-2)" title="펜 전용 모드 (손바닥/손가락 터치 필기 방지)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
+            <path d="m18 2 4 4-12 12H6v-4L18 2zM2 22h20" />
+          </svg>
+          <span class="text-[11px]">펜 전용</span>
+        </button>
+      </div>
     </div>
 
     <!-- 메인 악보 뷰어 Canvas -->
+        <!-- [펜/지우개 두께 조절 플로팅 팝오버] 툴바 오버플로 클리핑 방지를 위한 독립 오버레이 배치 -->
+    <div id="penThicknessPopover"
+      class="fixed p-2.5 sm:p-3 rounded-2xl shadow-xl border backdrop-blur-md z-50 flex flex-col gap-2 min-w-[190px] sm:min-w-[210px]"
+      style="display:none;background:var(--surface);border-color:var(--border)">
+      <div class="flex items-center justify-between text-xs font-semibold">
+        <span id="penThicknessTitle" style="color:var(--text-dim)">펜 두께</span>
+        <span id="penThicknessValueText" class="font-bold tabular-nums px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10" style="color:var(--accent)">2px</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="penSizeSlider" type="range" min="1" max="25" value="2" class="flex-1 cursor-pointer accent-[var(--accent)]" />
+        <span class="w-7 h-7 rounded-xl border flex items-center justify-center shrink-0" style="border-color:var(--border);background:var(--surface-2)">
+          <span id="penSizeDotInner" class="rounded-full bg-current transition-all" style="width:2px;height:2px"></span>
+        </span>
+      </div>
+    </div>
+
     <main id="viewer" class="relative flex-1 min-h-0 overflow-hidden select-none" style="background:var(--surface)">
+      <!-- 지우개 호버 크기 프리뷰 링 (펜 호버 & 마우스 이동 시 실시간 크기 원형 가이드) -->
+      <div id="eraserCursorRing"
+        class="absolute pointer-events-none rounded-full z-40 -translate-x-1/2 -translate-y-1/2 transition-[width,height] duration-75 ease-out"
+        style="display:none;border:1.5px solid rgba(255, 255, 255, 0.95);box-shadow:0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 0 6px rgba(239, 68, 68, 0.25);background:rgba(239, 68, 68, 0.08)">
+      </div>
       <!-- 등록된 악보 없음 안내 -->
       <div id="emptyState"
         class="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center z-10"
@@ -844,7 +968,7 @@
 
       <!-- 편집 모드 전용 줌 컨트롤 바 -->
       <div id="zoomControls"
-        class="absolute top-3 right-3 flex items-center gap-1 p-1 rounded-xl shadow-lg border backdrop-blur-md z-20 select-none transition-all"
+        class="absolute top-3 left-3 flex items-center gap-1 p-1 rounded-xl shadow-lg border backdrop-blur-md z-20 select-none transition-all"
         style="display:none;background:var(--surface);border-color:var(--border)">
         <button id="zoomOutBtn"
           class="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-sm active:scale-95"
@@ -940,66 +1064,6 @@
         <path d="M20 6 9 17l-5-5" />
       </svg>
       <span class="hidden sm:inline">저장</span>
-    </button>
-  </div>
-
-  <!-- [사용자 전용 툴바] ✏️: 개인 펜 드로잉, 굵기/색상, 지우개, 텍스트 메모 -->
-  <div id="userPenToolbar"
-    class="overflow-x-auto no-scrollbar flex flex-nowrap items-center gap-2.5 px-3 py-2 border-t shrink-0 select-none transition-colors"
-    style="display:none;border-color:var(--border);background:var(--surface)">
-    <!-- 색상 팔레트 -->
-    <div id="penColorSwatches" class="shrink-0 flex items-center gap-1.5"></div>
-
-    <!-- 펜 굵기 조절 슬라이더 및 크기 미리보기 -->
-    <div class="shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-xl border" style="border-color:var(--border)">
-      <input id="penSizeSlider" type="range" min="1" max="16" value="3" class="w-16 sm:w-20 cursor-pointer"
-        title="펜 굵기 조절" />
-      <span id="penSizePreviewDot" class="w-4 h-4 rounded-full flex items-center justify-center">
-        <span id="penSizeDotInner" class="rounded-full bg-current" style="width:3px;height:3px"></span>
-      </span>
-    </div>
-
-    <!-- 지우개 버튼 -->
-    <button id="penEraserBtn" class="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl border transition-all"
-      style="border-color:var(--border)" title="지우개">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-        stroke-linejoin="round" class="w-4.5 h-4.5">
-        <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" />
-        <path d="M22 21H7" />
-        <path d="m5 11 9 9" />
-      </svg>
-    </button>
-
-    <!-- 현재 곡 개인 필기 지우기 -->
-    <button id="penClearBtn" class="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl border transition-all"
-      style="border-color:var(--border);color:var(--text-dim)" title="현재 곡 필기 전체 지우기">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-        stroke-linejoin="round" class="w-4.5 h-4.5">
-        <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" />
-      </svg>
-    </button>
-
-    <!-- 텍스트 메모 스티커 추가 -->
-    <button id="userTextMemoBtn"
-      class="shrink-0 flex items-center gap-1.5 p-2 sm:px-3 sm:py-2 rounded-xl border text-xs sm:text-sm font-semibold active:scale-95 transition-all"
-      style="border-color:var(--border);background:var(--surface-2)" title="텍스트 메모 스티커 부착">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-        stroke-linejoin="round" class="w-4 h-4">
-        <path d="M4 7V4h16v3" />
-        <path d="M9 20h6" />
-        <path d="M12 4v16" />
-      </svg>
-      <span class="hidden sm:inline">텍스트 메모</span>
-    </button>
-
-    <!-- 펜 전용 모드 (Palm Rejection: 손 터치 필기 무시) -->
-    <button id="penStylusOnlyBtn"
-      class="shrink-0 flex items-center gap-1.5 p-2 sm:px-3 sm:py-2 rounded-xl border text-xs sm:text-sm font-semibold active:scale-95 transition-all"
-      style="border-color:var(--border);background:var(--surface-2)" title="펜 전용 모드 (손바닥/손가락 터치 필기 방지)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
-        <path d="m18 2 4 4-12 12H6v-4L18 2zM2 22h20" />
-      </svg>
-      <span class="hidden sm:inline">펜 전용</span>
     </button>
   </div>
 
@@ -2061,7 +2125,7 @@
   <!-- ==========================================
        모듈화된 메인 엔트리 스크립트 (ES Module)
        ========================================== -->
-  <script type="module" src="js/app.js?v=20261029_01"></script>
+  <script type="module" src="js/app.js?v=20261029_04"></script>
 </body>
 
 </html>

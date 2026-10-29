@@ -21,7 +21,9 @@ export const state = {
   themes: ['은혜', '찬양', '감사', '회개', '결단', '십자가', '부흥', '승리'], // 곡 주제 태그 목록
   stickersBySong: {},
   penColor: '#2B2730',
-  penSize: 3,
+  penSize: 2,
+  penThickness: 2, // 펜 두께 (기본 3, 범위 1~25)
+  eraserThickness: 15, // 지우개 두께 (기본 15, 범위 5~50),
   eraseMode: false,
   stylusOnly: true, // 펜 전용 모드 (Palm Rejection: 손바닥/손가락 터치 필기 무시, 기본 활성화)
   stickerStep: 3, // 스티커 크기 단계 (총 7단계, 기본 3단계: 1.0x)
@@ -68,6 +70,8 @@ export function loadPreferences() {
       if (parsed.stylusOnly === undefined) {
         parsed.stylusOnly = true;
       }
+      if (parsed.penThickness !== undefined) state.penThickness = parsed.penThickness;
+      if (parsed.eraserThickness !== undefined) state.eraserThickness = parsed.eraserThickness;
       return parsed;
     }
   } catch (e) {
@@ -97,7 +101,9 @@ export function savePreferences() {
       stickerScale: state.stickerScale || 1.0,
       viewSheetCount: state.viewSheetCount || 2,
       pageAnim: state.pageAnim || 'smooth',
-      stylusOnly: Boolean(state.stylusOnly)
+      stylusOnly: Boolean(state.stylusOnly),
+      penThickness: state.penThickness || 2,
+      eraserThickness: state.eraserThickness || 15
     }));
   } catch (e) {
     console.warn('설정 저장 실패:', e);

@@ -19,7 +19,8 @@ import {
 } from './db.js';
 import {
   clearCanvases, renderBaseSheet,
-  renderUserDrawing, setupDrawingSystem
+  renderUserDrawing, setupDrawingSystem,
+  pushCanvasSnapshot, undoDrawing, redoDrawing, canUndo, canRedo, resetDrawingHistory, updateEraserCursorRing
 } from './canvas.js';
 import {
   computeAutoCropBox, renderCroppedDataURL, syncCropBoxDOM
@@ -69,7 +70,7 @@ const DOM_IDS = [
   'sheetContainerRight', 'baseCanvasRight', 'stickerLayerRight', 'userCanvasRight',
   'navUI', 'hotspotPrev', 'hotspotNext', 'navIndicator',
   'leaderToolbar', 'leaderCropBtn', 'leaderRatioBtn', 'leaderSongformBtn', 'leaderClearStickersBtn', 'leaderSaveDoneBtn',
-  'userPenToolbar', 'penColorSwatches', 'penSizeSlider', 'penSizePreviewDot', 'penSizeDotInner', 'penEraserBtn', 'penClearBtn', 'userTextMemoBtn', 'penStylusOnlyBtn',
+  'userPenToolbar', 'penColorSwatches', 'penThicknessBtn', 'penThicknessPopover', 'penThicknessTitle', 'penThicknessValueText', 'penThicknessIconDot', 'penSizeSlider', 'penSizeDotInner', 'penEraserBtn', 'penClearBtn', 'penUndoBtn', 'penRedoBtn', 'eraserCursorRing', 'userTextMemoBtn', 'penStylusOnlyBtn',
   'bottomNav', 'navLeaderBtn', 'navUserBtn', 'navSongLibraryBtn', 'navSettingsBtn',
   'contiSessionLineupBar', // 하단 메뉴 바로 위 콘티 세션 라인업 바
   'fileInput',
@@ -3392,6 +3393,7 @@ export async function renderAll() {
       renderLeadSheetOverlay(els.sheetContainer, null);
     }
   }
+  updateUndoRedoUI();
   renderSongformStickyChips();
   applyUIState();
 }
@@ -4214,6 +4216,9 @@ export function applyUIState() {
 
   els.leaderToolbar.style.display = showLeaderToolbar ? 'flex' : 'none';
   els.userPenToolbar.style.display = showUserToolbar ? 'flex' : 'none';
+  if (!showUserToolbar && els.penThicknessPopover) {
+    els.penThicknessPopover.style.display = 'none';
+  }
 
   const showNav = state.locked && hasSongs && state.songs.length > 1;
   els.navUI.style.display = showNav ? 'block' : 'none';
@@ -4234,15 +4239,43 @@ export function applyUIState() {
     state.penColor = defaultPenColor;
   }
 
-  els.penEraserBtn.style.background = state.eraseMode ? 'var(--accent)' : 'transparent';
-  els.penEraserBtn.style.color = state.eraseMode ? '#ffffff' : 'var(--text)';
+  // 1. 지우개/펜 버튼 활성 상태
+  if (els.penEraserBtn) {
+    els.penEraserBtn.style.background = state.eraseMode ? 'var(--accent)' : 'var(--surface-2)';
+    els.penEraserBtn.style.color = state.eraseMode ? '#ffffff' : 'var(--text)';
+    els.penEraserBtn.style.borderColor = state.eraseMode ? 'var(--accent)' : 'var(--border)';
+  }
 
-  const previewSize = state.eraseMode ? state.penSize * 5 : state.penSize;
-  els.penSizeDotInner.style.width = Math.max(2, Math.min(36, previewSize)) + 'px';
-  els.penSizeDotInner.style.height = Math.max(2, Math.min(36, previewSize)) + 'px';
-  els.penSizeDotInner.style.backgroundColor = state.eraseMode ? '#888' : state.penColor;
+  // 2. 펜 / 지우개 독립 두께 게이지 및 팝오버 동기화
+  const isEraser = Boolean(state.eraseMode);
+  const currentThickness = isEraser ? (state.eraserThickness || 15) : (state.penThickness || 2);
+
+  if (els.penSizeSlider) {
+    els.penSizeSlider.min = isEraser ? '5' : '1';
+    els.penSizeSlider.max = isEraser ? '80' : '25';
+    els.penSizeSlider.value = currentThickness;
+  }
+  if (els.penThicknessTitle) {
+    els.penThicknessTitle.textContent = isEraser ? '지우개 두께' : '펜 두께';
+  }
+  if (els.penThicknessValueText) {
+    els.penThicknessValueText.textContent = `${currentThickness}px`;
+  }
+  if (els.penSizeDotInner) {
+    const previewDotSize = Math.max(2, Math.min(26, isEraser ? currentThickness * 0.7 : currentThickness));
+    els.penSizeDotInner.style.width = `${previewDotSize}px`;
+    els.penSizeDotInner.style.height = `${previewDotSize}px`;
+    els.penSizeDotInner.style.backgroundColor = isEraser ? '#888' : state.penColor;
+  }
+  if (els.penThicknessIconDot) {
+    const iconDotSize = Math.max(3, Math.min(14, Math.round(isEraser ? currentThickness * 0.35 : currentThickness * 1.3)));
+    els.penThicknessIconDot.style.width = `${iconDotSize}px`;
+    els.penThicknessIconDot.style.height = `${iconDotSize}px`;
+    els.penThicknessIconDot.style.backgroundColor = isEraser ? '#888' : state.penColor;
+  }
 
   updateStylusUI();
+  updateUndoRedoUI();
   updateHotspotPositions();
   updateNavIndicator();
   renderColorSwatches();
@@ -4406,6 +4439,26 @@ function updateNavIndicator() {
   }
 }
 
+
+export function updateUndoRedoUI() {
+  const isTwoPage = isTwoPageViewActive();
+  const isRight = isTwoPage && state.activeTwoPageSlot === 'right' && els.userCanvasRight;
+  const activeCanvas = isRight ? els.userCanvasRight : els.userCanvas;
+  const u = canUndo(activeCanvas);
+  const r = canRedo(activeCanvas);
+
+  if (els.penUndoBtn) {
+    els.penUndoBtn.classList.toggle('opacity-40', !u);
+    els.penUndoBtn.classList.toggle('cursor-not-allowed', !u);
+    els.penUndoBtn.classList.toggle('cursor-pointer', u);
+  }
+  if (els.penRedoBtn) {
+    els.penRedoBtn.classList.toggle('opacity-40', !r);
+    els.penRedoBtn.classList.toggle('cursor-not-allowed', !r);
+    els.penRedoBtn.classList.toggle('cursor-pointer', r);
+  }
+}
+
 function renderColorSwatches() {
   els.penColorSwatches.innerHTML = '';
   const isDark = isDarkThemeActive();
@@ -4415,7 +4468,7 @@ function renderColorSwatches() {
   colorList.forEach(color => {
     const btn = document.createElement('button');
     const selected = !state.eraseMode && state.penColor === color;
-    btn.className = 'shrink-0 w-7 h-7 rounded-full transition-transform active:scale-90 border';
+    btn.className = 'shrink-0 w-5.5 h-5.5 sm:w-6 sm:h-6 rounded-full transition-transform active:scale-90 border';
     btn.style.backgroundColor = color;
     btn.style.borderColor = 'var(--border)';
     btn.style.boxShadow = selected
@@ -6773,14 +6826,118 @@ function wireEventListeners() {
       }
     });
   }
-  els.penEraserBtn.addEventListener('click', () => {
-    state.eraseMode = !state.eraseMode;
-    applyUIState();
-  });
-  els.penSizeSlider.addEventListener('input', (e) => {
-    state.penSize = Number(e.target.value);
-    applyUIState();
-  });
+  // 펜/지우개 모드 전환 (각각의 기억된 두께로 즉시 복원)
+  if (els.penEraserBtn) {
+    els.penEraserBtn.addEventListener('click', () => {
+      state.eraseMode = !state.eraseMode;
+      state.penSize = state.eraseMode ? (state.eraserThickness || 15) : (state.penThickness || 2);
+      applyUIState();
+      if (!state.eraseMode) {
+        updateEraserCursorRing(null, false);
+      }
+    });
+  }
+
+  // 펜/지우개 두께 슬라이더 조절
+  if (els.penSizeSlider) {
+    els.penSizeSlider.addEventListener('input', (e) => {
+      const val = Number(e.target.value);
+      if (state.eraseMode) {
+        state.eraserThickness = val;
+      } else {
+        state.penThickness = val;
+      }
+      state.penSize = val;
+      savePreferences();
+      applyUIState();
+      if (state.eraseMode) {
+        updateEraserCursorRing(null, true);
+      }
+    });
+  }
+
+  // 펜/지우개 두께 팝오버 토글 및 외부 클릭 시 닫기 (위치 자동 계산 & 오버플로 클리핑 방지)
+  if (els.penThicknessBtn && els.penThicknessPopover) {
+    const updatePenPopoverPos = () => {
+      if (!els.penThicknessBtn || !els.penThicknessPopover) return;
+      const rect = els.penThicknessBtn.getBoundingClientRect();
+      const popoverWidth = 210;
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - popoverWidth - 8));
+      els.penThicknessPopover.style.position = 'fixed';
+      els.penThicknessPopover.style.top = `${rect.bottom + 6}px`;
+      els.penThicknessPopover.style.left = `${left}px`;
+      els.penThicknessPopover.style.zIndex = '99999';
+    };
+
+    const togglePenPopover = (forceOpen) => {
+      const isVisible = els.penThicknessPopover.style.display === 'flex';
+      const nextOpen = forceOpen !== undefined ? forceOpen : !isVisible;
+      if (nextOpen) {
+        updatePenPopoverPos();
+        els.penThicknessPopover.style.display = 'flex';
+      } else {
+        els.penThicknessPopover.style.display = 'none';
+      }
+    };
+
+    els.penThicknessBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      togglePenPopover();
+    });
+
+    els.penThicknessBtn.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+    });
+
+    els.penThicknessPopover.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+    });
+
+    document.addEventListener('pointerdown', (e) => {
+      if (els.penThicknessPopover && els.penThicknessPopover.style.display === 'flex') {
+        if (!els.penThicknessPopover.contains(e.target) && !els.penThicknessBtn.contains(e.target)) {
+          togglePenPopover(false);
+        }
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      if (els.penThicknessPopover && els.penThicknessPopover.style.display === 'flex') {
+        updatePenPopoverPos();
+      }
+    });
+  }
+
+  // 수정 이력 실행 취소 (뒤로)
+  if (els.penUndoBtn) {
+    els.penUndoBtn.addEventListener('click', async () => {
+      const isTwoPage = isTwoPageViewActive();
+      const isRight = isTwoPage && state.activeTwoPageSlot === 'right' && els.userCanvasRight;
+      const targetCanvas = isRight ? els.userCanvasRight : els.userCanvas;
+      const song = isRight ? state.songs[state.currentIndex + 1] : state.songs[state.currentIndex];
+      if (undoDrawing(targetCanvas)) {
+        if (song) await saveUserDrawing(song.id, targetCanvas);
+        updateUndoRedoUI();
+        markViewerDirty();
+      }
+    });
+  }
+
+  // 수정 이력 다시 실행 (앞으로)
+  if (els.penRedoBtn) {
+    els.penRedoBtn.addEventListener('click', async () => {
+      const isTwoPage = isTwoPageViewActive();
+      const isRight = isTwoPage && state.activeTwoPageSlot === 'right' && els.userCanvasRight;
+      const targetCanvas = isRight ? els.userCanvasRight : els.userCanvas;
+      const song = isRight ? state.songs[state.currentIndex + 1] : state.songs[state.currentIndex];
+      if (redoDrawing(targetCanvas)) {
+        if (song) await saveUserDrawing(song.id, targetCanvas);
+        updateUndoRedoUI();
+        markViewerDirty();
+      }
+    });
+  }
   let activeTextMemoTarget = 'left';
 
   function updateTextMemoSongSelectUI() {
@@ -6819,13 +6976,17 @@ function wireEventListeners() {
     if (!confirm('현재 화면에 작성한 개인 필기를 모두 지우시겠습니까?')) return;
 
     if (els.sheetContainer && els.userCanvas) {
+      pushCanvasSnapshot(els.userCanvas);
       els.userCanvas.getContext('2d').clearRect(0, 0, els.sheetContainer.clientWidth, els.sheetContainer.clientHeight);
       await saveUserDrawing(songLeft.id, els.userCanvas);
     }
     if (isTwoPage && songRight && els.sheetContainerRight && els.userCanvasRight) {
+      pushCanvasSnapshot(els.userCanvasRight);
       els.userCanvasRight.getContext('2d').clearRect(0, 0, els.sheetContainerRight.clientWidth, els.sheetContainerRight.clientHeight);
       await saveUserDrawing(songRight.id, els.userCanvasRight);
     }
+    updateUndoRedoUI();
+    markViewerDirty();
   });
 
   let editingTextMemoContext = null;
@@ -7141,14 +7302,18 @@ function wireEventListeners() {
 
   // 드로잉 시스템 (좌측/단독 악보 & 우측 2곡보기 악보)
   setupDrawingSystem(els.userCanvas, () => {
+    state.activeTwoPageSlot = 'left';
     const song = state.songs[state.currentIndex];
     if (song) saveUserDrawing(song.id, els.userCanvas);
+    updateUndoRedoUI();
     markViewerDirty();
   });
   if (els.userCanvasRight) {
     setupDrawingSystem(els.userCanvasRight, () => {
+      state.activeTwoPageSlot = 'right';
       const songRight = state.songs[state.currentIndex + 1];
       if (songRight) saveUserDrawing(songRight.id, els.userCanvasRight);
+      updateUndoRedoUI();
       markViewerDirty();
     });
   }

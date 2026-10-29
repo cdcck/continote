@@ -158,6 +158,128 @@ export async function renderUserDrawing(sheetContainer, userCanvas, songId) {
   });
 }
 
+
+// ==========================================
+// [캔버스 실행 취소 / 다시 실행 (Undo / Redo) 히스토리 엔진]
+// ==========================================
+const historyByCanvas = new WeakMap();
+
+export function getCanvasHistory(canvas) {
+  if (!canvas) return null;
+  if (!historyByCanvas.has(canvas)) {
+    historyByCanvas.set(canvas, {
+      undoStack: [],
+      redoStack: [],
+      maxDepth: 30
+    });
+  }
+  return historyByCanvas.get(canvas);
+}
+
+export function pushCanvasSnapshot(canvas) {
+  if (!canvas) return;
+  const history = getCanvasHistory(canvas);
+  if (!history) return;
+  const ctx = canvas.getContext('2d');
+  const snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  history.undoStack.push(snapshot);
+  if (history.undoStack.length > history.maxDepth) {
+    history.undoStack.shift();
+  }
+  history.redoStack = [];
+}
+
+export function undoDrawing(canvas) {
+  if (!canvas) return false;
+  const history = getCanvasHistory(canvas);
+  if (!history || !history.undoStack.length) return false;
+  const ctx = canvas.getContext('2d');
+  const currentSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  history.redoStack.push(currentSnapshot);
+  const prevSnapshot = history.undoStack.pop();
+  ctx.putImageData(prevSnapshot, 0, 0);
+  return true;
+}
+
+export function redoDrawing(canvas) {
+  if (!canvas) return false;
+  const history = getCanvasHistory(canvas);
+  if (!history || !history.redoStack.length) return false;
+  const ctx = canvas.getContext('2d');
+  const currentSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  history.undoStack.push(currentSnapshot);
+  const nextSnapshot = history.redoStack.pop();
+  ctx.putImageData(nextSnapshot, 0, 0);
+  return true;
+}
+
+export function canUndo(canvas) {
+  if (!canvas) return false;
+  const history = getCanvasHistory(canvas);
+  return Boolean(history && history.undoStack.length > 0);
+}
+
+export function canRedo(canvas) {
+  if (!canvas) return false;
+  const history = getCanvasHistory(canvas);
+  return Boolean(history && history.redoStack.length > 0);
+}
+
+export function resetDrawingHistory(canvas) {
+  if (!canvas) return;
+  const history = getCanvasHistory(canvas);
+  if (history) {
+    history.undoStack = [];
+    history.redoStack = [];
+  }
+}
+
+
+let eraserRingEl = null;
+let lastRingPos = null;
+
+export function updateEraserCursorRing(e, isHover = true) {
+  if (!eraserRingEl) {
+    eraserRingEl = document.getElementById('eraserCursorRing');
+  }
+  if (!eraserRingEl) return;
+
+  if (!state.eraseMode || state.locked || state.activeMenu !== 'user' || !isHover) {
+    eraserRingEl.style.display = 'none';
+    lastRingPos = null;
+    return;
+  }
+
+  const viewer = document.getElementById('viewer');
+  if (!viewer) return;
+
+  if (e && typeof e.clientX === 'number') {
+    const vRect = viewer.getBoundingClientRect();
+    const x = e.clientX - vRect.left;
+    const y = e.clientY - vRect.top;
+    if (x < -20 || y < -20 || x > vRect.width + 20 || y > vRect.height + 20) {
+      eraserRingEl.style.display = 'none';
+      lastRingPos = null;
+      return;
+    }
+    lastRingPos = { x, y };
+  }
+
+  if (!lastRingPos) {
+    eraserRingEl.style.display = 'none';
+    return;
+  }
+
+  const zoomScale = (typeof window !== 'undefined' && window.__continoteGetZoomScale) ? window.__continoteGetZoomScale() : 1;
+  const d = Math.max(5, Math.round((state.eraserThickness || 15) * zoomScale));
+
+  eraserRingEl.style.left = `${lastRingPos.x}px`;
+  eraserRingEl.style.top = `${lastRingPos.y}px`;
+  eraserRingEl.style.width = `${d}px`;
+  eraserRingEl.style.height = `${d}px`;
+  eraserRingEl.style.display = 'block';
+}
+
 const activeCancelFns = [];
 
 export function cancelActiveDrawing() {
@@ -211,18 +333,35 @@ export function setupDrawingSystem(userCanvas, onStrokeEnd) {
       userCanvas.setPointerCapture(e.pointerId);
     } catch (_) {}
 
+    // [실행 취소 스냅샷 저장] 스트로크 시작 직전 현재 캔버스 상태 캡처
+    pushCanvasSnapshot(userCanvas);
+
     const pt = getPoint(e);
     ctx.beginPath();
     ctx.moveTo(pt.x, pt.y);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = state.eraseMode ? '#000000' : state.penColor;
-    // 지우개 선택 시 펜 대비 5배 크기 적용
-    ctx.lineWidth = state.eraseMode ? state.penSize * 5 : state.penSize;
+    // 펜과 지우개의 독립 기억된 두께 게이지 적용
+    const strokeWidth = state.eraseMode ? (state.eraserThickness || 15) : (state.penThickness || 3);
+    ctx.lineWidth = strokeWidth;
     ctx.globalCompositeOperation = state.eraseMode ? 'destination-out' : 'source-over';
   });
 
+  userCanvas.addEventListener('pointerenter', (e) => {
+    if (state.eraseMode && (e.pointerType === 'pen' || e.pointerType === 'mouse')) {
+      updateEraserCursorRing(e, true);
+    }
+  });
+
   userCanvas.addEventListener('pointermove', (e) => {
+    // 1. 지우개 모드 시 실시간 원형 가이드 링 위치 추적 (스타일러스 펜 호버 & PC 마우스)
+    if (state.eraseMode) {
+      if (e.pointerType === 'pen' || e.pointerType === 'mouse' || isDrawing) {
+        updateEraserCursorRing(e, true);
+      }
+    }
+
     if (!isDrawing) return;
     e.stopPropagation();
     const pt = getPoint(e);
@@ -231,6 +370,9 @@ export function setupDrawingSystem(userCanvas, onStrokeEnd) {
   });
 
   const finishStroke = (e) => {
+    if (e && e.pointerType === 'touch') {
+      updateEraserCursorRing(null, false);
+    }
     if (!isDrawing) return;
     isDrawing = false;
     try {
@@ -241,6 +383,12 @@ export function setupDrawingSystem(userCanvas, onStrokeEnd) {
   };
 
   userCanvas.addEventListener('pointerup', finishStroke);
-  userCanvas.addEventListener('pointercancel', finishStroke);
-  userCanvas.addEventListener('pointerleave', finishStroke);
+  userCanvas.addEventListener('pointercancel', (e) => {
+    updateEraserCursorRing(null, false);
+    finishStroke(e);
+  });
+  userCanvas.addEventListener('pointerleave', (e) => {
+    updateEraserCursorRing(null, false);
+    finishStroke(e);
+  });
 }

@@ -1,16 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#2563EB" />
-      <stop offset="100%" stop-color="#38BDF8" />
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="112" fill="url(#g)" />
-  <g fill="#FFFFFF">
-    <ellipse cx="180" cy="348" rx="46" ry="34" transform="rotate(-20 180 348)" />
-    <ellipse cx="332" cy="296" rx="46" ry="34" transform="rotate(-20 332 296)" />
-    <rect x="206" y="150" width="20" height="198" rx="6" />
-    <rect x="358" y="100" width="20" height="196" rx="6" />
-    <polygon points="206,150 378,100 378,145 206,195" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="112" fill="#F9F6F0" />
+  <g transform="translate(66, 66) scale(3.8)" stroke="#6B5B95" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Stylized 'A' outer contour -->
+    <path d="M 50 14 L 18 86" />
+    <path d="M 50 14 L 82 86" />
+    <!-- Inner legs for double-stroke / ribbon depth -->
+    <path d="M 50 26 L 27 82" stroke-width="3" opacity="0.85" />
+    <path d="M 50 26 L 73 82" stroke-width="3" opacity="0.85" />
+    
+    <!-- Paintbrush crossbar extending to the right with ferrule & tip -->
+    <path d="M 28 56 C 36 53, 56 49, 74 46" stroke-width="4.5" />
+    <!-- Paintbrush tip & bristles -->
+    <path d="M 74 46 C 79 44, 86 40, 92 34 C 88 43, 82 48, 77 50 Z" fill="#6B5B95" stroke-width="1.5" />
+    
+    <!-- Intertwined G-clef / musical swirl flourish -->
+    <path d="M 49 20 C 49 14, 42 12, 40 18 C 37 25, 47 38, 48 48 C 49 58, 38 65, 36 72 C 34 80, 42 85, 48 80 C 53 76, 52 68, 45 68 C 38 68, 36 75, 42 79" stroke-width="3.5" />
   </g>
 </svg>

@@ -25,6 +25,7 @@ let startPointerY = 0;
 let initialPanX = 0;
 let initialPanY = 0;
 
+if (typeof window !== "undefined") window.__continoteGetZoomScale = () => zoomState.scale;
 export function getZoomScale() {
   return zoomState.scale;
 }
