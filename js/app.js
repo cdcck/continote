@@ -907,14 +907,15 @@ function initFirebaseAuth() {
         // [SWR 백그라운드 동기화] UI 블로킹 없이 백그라운드에서 조용히 클라우드와 diff 동기화
         (async () => {
           try {
-            // 1. 로컬에 작성된 기존 콘티 및 악보를 Firestore 클라우드로 자동 초기 업로드 (리더 ➔ 클라우드)
-            await syncAllLocalDataToCloud(profile.orgId, state.currentUser);
-
-            // 2. Firestore 클라우드 콘티 및 악보 라이브러리 실시간 동기화 (클라우드 ➔ 로컬)
+            // 1. Firestore 클라우드 콘티 및 악보 라이브러리 실시간 최신 동기화 (클라우드 ➔ 로컬 우선 수신!)
+            //    (다른 기기에서 작성한 최신 리드 시트 및 콘티가 기기 B의 과거 로컬 캐시에 의해 덮어씌워지는 역방향 덮어쓰기 원천 방지)
             await Promise.all([
               syncCloudContis(profile.orgId, user.email),
               syncCloudSongs(profile.orgId)
             ]);
+
+            // 2. 클라우드에 아직 등록되지 않은 순수 신규 로컬 콘티/악보만 Firestore 클라우드로 안전하게 업로드 (로컬 ➔ 클라우드)
+            await syncAllLocalDataToCloud(profile.orgId, state.currentUser);
 
             // 동기화 완료 후 현재 보고 있는 화면만 조용히 최신 데이터로 갱신
             if (state.viewLevel === 'contiList') {
@@ -980,6 +981,11 @@ export async function syncAllLocalDataToCloud(orgId, user) {
   let contisChanged = false;
 
   for (const c of localContis) {
+    // [클라우드 덮어쓰기 방어벽] 이미 Firestore에 동기화되어 내려받은 콘티는 무조건 덮어쓰지 않고 보호
+    if (c._syncedToCloud) {
+      continue;
+    }
+
     if (!c.orgId) {
       c.orgId = orgId;
       contisChanged = true;
@@ -1036,6 +1042,7 @@ export async function syncAllLocalDataToCloud(orgId, user) {
         memo: c.memo || '',
         sharedWith: Array.isArray(c.sharedWith) ? c.sharedWith : []
       });
+      c._syncedToCloud = true;
     } catch (err) {
       console.warn(`[Firebase] 로컬 콘티 '${c.title}' 클라우드 업로드 실패:`, err);
     }
@@ -1145,12 +1152,22 @@ export async function handleCloudContisUpdate(cloudContis, isFullOrgSync = false
           songform,
           stickers: st,
           image: preservedImage,
-          original: preservedOriginal
+          original: preservedOriginal,
+          isLeadSheet: Boolean(item.isLeadSheet),
+          content: item.isLeadSheet ? (item.content !== undefined ? item.content : (localSong?.content || '')) : (item.content || ''),
+          fontSize: item.isLeadSheet ? (item.fontSize || localSong?.fontSize || 'large') : (item.fontSize || '')
         };
       });
 
-      // [리드 시트 보존 방어벽] 원격 목록에 리드 시트가 누락된 경우 기존 로컬 리드 시트 순서 보존 병합
-      const localLeadSheets = prevSongs.filter(s => s.isLeadSheet && !mappedSongs.some(m => m.id === s.id));
+      // [리드 시트 보존/삭제 스마트 동기화]
+      // 원격 목록에 특정 리드 시트가 없고, 로컬의 해당 리드 시트가 원격 갱신 시각 이후에 새로 작성된 경우에만 보존(오프라인 작성 보호)
+      // 원격 갱신 시각이 더 최신인 경우(원격에서 삭제된 경우)는 로컬에서도 깨끗하게 삭제 반영
+      const remoteUpdatedAt = cc.updatedAt?.toMillis ? cc.updatedAt.toMillis() : (typeof cc.updatedAt === 'number' ? cc.updatedAt : (new Date(cc.updatedAt || 0).getTime() || 0));
+      const localLeadSheets = prevSongs.filter(s => {
+        if (!s.isLeadSheet || mappedSongs.some(m => m.id === s.id)) return false;
+        const localLeadSheetTime = s.updatedAt || s.createdAt || 0;
+        return localLeadSheetTime > remoteUpdatedAt;
+      });
       if (localLeadSheets.length > 0) {
         localLeadSheets.forEach(ls => {
           const insertIdx = (typeof ls.order === 'number' && ls.order <= mappedSongs.length) ? ls.order : mappedSongs.length;
@@ -1158,12 +1175,14 @@ export async function handleCloudContisUpdate(cloudContis, isFullOrgSync = false
         });
       }
 
-      // 변경 사항 감지 (곡 수, 곡 식별자, 순서, 송폼, 제목, 날짜, 메모)
+      // 변경 사항 감지 (곡 수, 곡 식별자, 순서, 송폼, 제목, 날짜, 메모, 리드 시트 본문/글자크기/타입)
       const songsChanged = (prevSongs.length !== mappedSongs.length) ||
         mappedSongs.some((s, idx) => {
           const p = prevSongs[idx];
           return !p || p.id !== s.id || p.order !== s.order || p.name !== s.name || p.key !== s.key ||
-                 p.tempo !== s.tempo || JSON.stringify(p.songform || []) !== JSON.stringify(s.songform || []);
+                 p.tempo !== s.tempo || p.isLeadSheet !== s.isLeadSheet ||
+                 (s.isLeadSheet && (p.content !== s.content || p.fontSize !== s.fontSize)) ||
+                 JSON.stringify(p.songform || []) !== JSON.stringify(s.songform || []);
         });
 
       if (songsChanged || existing.title !== cc.title || existing.date !== cc.date || existing.memo !== cc.memo) {
@@ -1180,6 +1199,7 @@ export async function handleCloudContisUpdate(cloudContis, isFullOrgSync = false
       existing.songs = mappedSongs;
       existing.songCount = mappedSongs.length;
       existing.updatedAt = cc.updatedAt?.toMillis ? cc.updatedAt.toMillis() : Date.now();
+      existing._syncedToCloud = true;
 
       if (state.currentContiId === cc.id && songsChanged) {
         state.songs = mappedSongs;
@@ -1239,6 +1259,7 @@ export async function handleCloudContisUpdate(cloudContis, isFullOrgSync = false
         songs: mappedSongs,
         songCount: mappedSongs.length,
         orgId: cc.orgId,
+        _syncedToCloud: true,
         createdAt: cc.createdAt?.toMillis ? cc.createdAt.toMillis() : Date.now(),
         updatedAt: cc.updatedAt?.toMillis ? cc.updatedAt.toMillis() : Date.now()
       });
@@ -2433,7 +2454,9 @@ export async function deleteLeadSheet(leadSheetId) {
     if (currentConti) {
       currentConti.songs = state.songs;
       currentConti.songCount = currentConti.songs.length;
+      currentConti.updatedAt = Date.now();
       await saveCurrentConti();
+      syncContiToFirestore(currentConti);
       if (hasDriveAuth() && state.currentContiId) {
         syncContiDetailToDrive(state.currentContiId, true);
       }

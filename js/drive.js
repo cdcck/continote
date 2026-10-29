@@ -620,7 +620,11 @@ export async function cleanSongForDrive(s) {
     authorEmail: s.authorEmail || '',
     authorName: s.authorName || '',
     createdAt: s.createdAt || Date.now(),
-    updatedAt: s.updatedAt || Date.now()
+    updatedAt: s.updatedAt || Date.now(),
+    isLeadSheet: Boolean(s.isLeadSheet),
+    content: s.content || '',
+    fontSize: s.fontSize || 'large',
+    isPrivate: s.isPrivate !== undefined ? Boolean(s.isPrivate) : true
     // original 필드는 절대로 클라우드에 올리지 않음 (로컬 IDB에만 보존)
   };
 }
