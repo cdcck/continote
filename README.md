@@ -7,7 +7,21 @@
 
 ## 🌟 주요 핵심 기능
 
-### 1. 📂 3계층 워크플로우 & 권한 모델 (3-Tier Hierarchy & Role Architecture)
+### 1. 🎨 브랜드 아이덴티티 & 디자인 시스템 (Brand Identity & Design System)
+- **시그니처 엠블럼**: 붓(Paintbrush)과 높은음자리표(Treble Clef), 그리고 알파벳 'A'가 결합된 ContiNote 전용 벡터 엠블럼을 통해 찬양과 예술적 필기의 조화를 상징합니다.
+- **고대비 무대 맞춤 컬러 팔레트**:
+  - **Light Theme**: Soft Cream Beige (`#F9F6F0`) 배경, Soft Violet (`#6B5B95`) 포인트 악센트, Charcoal (`#2B2730`) 본문.
+  - **Dark Theme**: Deep Midnight Black (`#0F0E13`) 배경, Vivid Violet (`#9D4EDD`) 형광 악센트, Off White (`#F0EEF6`) 타이포그래피.
+- **풍부한 크로스 플랫폼 에셋**:
+  - SVG 및 고해상도 PNG 파비콘 (`favicon.svg`, `favicon-32.png`, `favicon-16.png`).
+  - 모바일 홈 화면 최적화 PWA 아이콘 (라이트 512px/192px 및 다크 모드 512px).
+  - OpenGraph / SNS 미리보기 카드 (`og-image.png`, 1200×630px).
+  - 브랜드 워터마크가 은은하게 적용된 미니멀 빈 화면 그래픽 (Empty State).
+  - 딥 미드나이트 블랙 스플래시 스크린 (`splash.png`).
+
+---
+
+### 2. 📂 3계층 워크플로우 & 권한 모델 (3-Tier Hierarchy & Role Architecture)
 - **1단계: 콘티 목록 뷰 (`Conti List View`)**  
   - 주일 1부/2부 예배, 금요 기도회, 청년부 등 일자별 콘티 카드를 관리합니다.
   - **인도자 탭 vs 사용자(팀원) 탭 명확 분리**:
@@ -25,11 +39,11 @@
   - **확대 악보 스마트 제스처 분리 & 펜 전용 모드 (`Palm Rejection & Dual-Touch Pan`)**: 악보가 확대된 상태에서도 스타일러스 펜(Apple Pencil, S-Pen)은 악보 이동에 방해받지 않고 100% 정밀 필기되며, 손가락 2개 터치 시 부드러운 악보 이동(Pan)과 핀치 줌이 즉시 작동합니다. 또한 [펜 전용] 모드에서는 1손가락 터치가 악보 이동 제스처로 동작하여 펜을 쥔 채 자유롭게 악보를 드래그하고 필기할 수 있습니다.
   - **초경량 곡 넘김 슬라이드 & 페이드 (180ms)**: 이전/다음 곡 이동 시 뚝뚝 끊기지 않는 180ms 초경량 GPU 가속 애니메이션이 작동하며, 환경설정에서 **[부드럽게]** 또는 **[즉시 전환]**을 취향에 맞게 선택할 수 있습니다.
   - **섬세한 터치 제스처 & 빠른 플릭(Flick) 지원**: 스와이프 최소 거리를 28px로 완화하고, 300ms 이내의 가벼운 튕김 제스처(플릭) 및 대각선 스와이프(40% 관용성)를 지원하여 태블릿이나 스마트폰을 한 손으로 쥐고 엄지로 빗겨 넘겨도 부드럽게 페이지가 넘어갑니다.
-- **인도자 전용 리드 시트 큐카드 (`Leader's Cue Sheet / Lead Sheet`)**  
+- **인도자 전용 리드 시트 큐카드 (`Leader's Cue Sheet / Lead Sheet`) & 다기기 실시간 동기화**  
   - 예배 오프닝 멘트, 대표 기도문, 곡간 연결 브릿지 멘트, 성경 구절을 콘티 곡 순서 사이에 자유롭게 추가할 수 있는 인도자 전용 큐시트 기능입니다.
   - **팀원 화면 완전 격리 보호**: 팀원(사용자) 화면 및 마스터 악보 보관함에는 노출되지 않고, 오직 인도자 본인의 화면에만 프라이빗하게 표시됩니다. (곡 순서 번호 산정에서도 순수 악보만 1부터 번호 자동 부여).
-  - **노션 클린 미니멀 서피스**: 산만한 공책 줄눈이나 누런 띠 없이, 라이트 모드(오프화이트 종이)와 다크 모드(딥 징크 서피스) 모두에서 좌측 인용 라인과 고대비 타이포그래피(1.85 행간)로 무대 조명 환경에서도 한눈에 꽂히는 큐카드 레이아웃을 제공합니다.
-  - 리드 시트 위에도 일반 악보와 동일하게 형광펜/펜 필기가 자유롭게 가능합니다.
+  - **동일 계정 멀티 디바이스 실시간 동기화**: PC에서 작성한 리드 시트 멘트가 태블릿이나 스마트폰에 실시간으로 반영되며, 수정 시 타 기기의 기존 데이터를 덮어쓰지 않고 안전하게 양방향 동기화됩니다.
+  - **노션 클린 미니멀 서피스**: 산만한 공책 줄눈 없이 라이트/다크 모드에 최적화된 고대비 타이포그래피(1.85 행간)와 좌측 인용 라인으로 무대 조명 아래에서도 높은 가독성을 제공합니다.
 - **마스터 악보 보관함 (`Song Library`)**  
   - 교회 찬양팀이 보유한 모든 악보를 한곳에 영구 보관하며, 실시간 검색과 `#은혜`, `#찬양`, `#결단` 등 주제 태그 필터링을 지원합니다.
   - 곡 목록 화면 상단의 **`+ 새 악보`** 버튼을 통해 보관함 전용 악보를 즉시 등록할 수 있습니다.
@@ -39,11 +53,25 @@
 - **새로고침 화면 상태 보존 & FOUC(깜빡임) 0ms 사전 하이드레이션 (`State Persistence`)**  
   - 브라우저 새로고침(F5) 및 웹앱 재접속 시 초기 메뉴로 튕기지 않고 **직전에 보던 메뉴(사용자/인도자/보관함/설정)와 화면 계층(콘티 목록/곡 목록/악보 뷰어의 특정 악보 페이지)**을 100% 동일하게 자동 복원합니다.
   - `data-prehydrate-view`, `data-prehydrate-menu` 기반의 CSS 사전 하이드레이션을 통해 비동기 DB 로드 대기 시간(FOUC) 없이 첫 프레임부터 보던 화면과 탭 컬러 테마를 즉각 렌더링합니다.
-  - 뷰어 내에서 곡을 넘기거나 탭을 전환해도 현재 열람 인덱스와 세션을 실시간으로 안전하게 동기화합니다.
 
 ---
 
-### 2. 🏛️ Firebase 멀티테넌트 교회 조직 & 찬양팀 승인 시스템
+### 3. ✍️ 사용자 악보 편집 툴바 & 스마트 캔버스 엔진
+- **송폼 순서 바 직하단 최적화 배치**:
+  - 악보 편집 팔레트(`userPenToolbar`)가 송폼 순서 바 바로 아래에 위치하여 시선 분산 없이 악보와 툴바를 동시에 조작할 수 있습니다.
+- **실행 취소(Undo) / 다시 실행(Redo) 히스토리 관리**:
+  - 드로잉 캔버스 스냅샷 스택 엔진(`pushCanvasSnapshot`, `undoDrawing`, `redoDrawing`)이 탑재되어, 버튼 탭 및 단축키로 필기 수정 이력을 무제한 단계로 실행 취소하거나 다시 실행할 수 있습니다.
+- **펜 / 지우개 독립 두께 기억 & 플로팅 조절 팝오버**:
+  - **모드별 독립 두께 기억**: 펜 모드(1~25px, 기본 **2px**)와 지우개 모드(5~80px, 기본 **15px**)의 설정값을 각각 기억하여, 도구 전환 시 직전에 사용하던 두께로 즉시 복원됩니다.
+  - **오버플로 클리핑 프리 팝오버**: 툴바 가로 스크롤에 잘리지 않도록 최상위 독립 플로팅 레이어로 구성되어, 버튼 클릭 시 화면 위치를 자동 계산하여 직하단에 부드럽게 고정 표시됩니다.
+- **실시간 지우개 호버 링 커서 (`Eraser Hover Ring Cursor`)**:
+  - 마우스 커서 및 스타일러스 펜(Apple Pencil, S-Pen)을 화면에 가까이 댔을 때(Hover), 실제 지워질 영역의 크기와 위치를 정밀한 반투명 원형 링으로 실시간 표시하여 정확한 부분 삭제가 가능합니다.
+- **좌측 상단 컴팩트 줌 & 되돌리기 컨트롤러**:
+  - 악보 좌측 상단(`top-3 left-3`)에 줌 배율 표시 및 원위치 리셋 버튼을 배치하여 연주 중 시야 간섭을 최소화했습니다.
+
+---
+
+### 4. 🏛️ Firebase 멀티테넌트 교회 조직 & 찬양팀 승인 시스템
 클라우드 협업을 위해 Firebase Authentication 및 Firestore 기반의 멀티테넌트 아키텍처를 제공합니다:
 - **Google 1클릭 로그인**: 별도의 복잡한 회원가입 없이 Google 계정으로 즉시 연동됩니다.
 - **교회/찬양팀 생성 및 가입 신청 (Onboarding)**:
@@ -55,7 +83,7 @@
 
 ---
 
-### 3. 🔍 pHash 시각적 악보 지문 & 중복 감지 엔진 (Perceptual Hashing)
+### 5. 🔍 pHash 시각적 악보 지문 & 중복 감지 엔진 (Perceptual Hashing)
 동일한 곡 악보가 중복 업로드되어 저장소가 낭비되고 버전이 분산되는 문제를 해결합니다:
 - **64비트 시각적 지문 계산 (`pHash`)**:
   - 악보 이미지를 32×32 그레이스케일로 축소하고 이산 코사인 변환(DCT)을 수행하여 고유한 64비트 지문 해시를 산출합니다.
@@ -67,7 +95,7 @@
 
 ---
 
-### 4. 🛡️ 무손실 데이터 무결성 아키텍처 (Zero Data Loss Protection)
+### 6. 🛡️ 무손실 데이터 무결성 아키텍처 (Zero Data Loss Protection)
 데이터가 갑자기 사라지거나 덮어씌워지는 문제를 원천 해결하는 다중 방어 메커니즘을 적용했습니다:
 - **Local-First SWR (Stale-While-Revalidate)**:
   - 앱 시작 시 로컬 IndexedDB로부터 0.01초 만에 콘티와 악보를 즉시 렌더링하고, 백그라운드에서 Firebase Firestore 실시간 리스너(`onSnapshot`)를 통해 최신 변경사항을 부드럽게 동기화합니다.
@@ -81,7 +109,7 @@
 
 ---
 
-### 5. ☁️ Google Drive 2단계 지연 동기화 & 백업
+### 7. ☁️ Google Drive 2단계 지연 동기화 & 백업
 Firebase 클라우드 외에도 개인 Google Drive 계정과의 이중 백업을 지원합니다:
 - **[1단계] 콘티 목록 선행 동기화 (`contis_index.json`)**  
   - 10MB 미만 메타데이터는 1-step Direct 업로드로 즉각 반영합니다.
@@ -91,7 +119,7 @@ Firebase 클라우드 외에도 개인 Google Drive 계정과의 이중 백업�
 
 ---
 
-### 6. 🎨 3단계 악보 등록 파이프라인 (3-Step Registration)
+### 8. 🎨 3단계 악보 등록 파이프라인 (3-Step Registration)
 - **1단계: 여백 자르기 (`Auto/Manual Crop`)**  
   - 단색 배경을 분석하여 불필요한 테두리를 자동 제거(Auto)하거나, 8개 조절 핸들과 44×44px 터치 히트박스를 통해 손가락으로 정밀하게 자릅니다.
 - **2단계: 가로·세로 비율 미세 조정 (`Ratio Scaling`)**  
@@ -101,10 +129,10 @@ Firebase 클라우드 외에도 개인 Google Drive 계정과의 이중 백업�
 
 ---
 
-### 7. 🧩 3중 레이어 캔버스 & 송폼 키패드
-- **Layer 1: Base Canvas (악보 이미지)**: 단면 보기 및 2곡 양면 보기, 다크 모드 흑백 반전.
-- **Layer 2: Sticker DOM Layer (송폼 칩 & 인터랙티브 텍스트상자 객체)**: `[A]`, `[Chorus]` 등의 송폼 파트 칩과 코드 스티커 배치. 평상시에는 테두리 없이 깔끔한 텍스트만 표시되며, 탭 선택 시 은은한 테두리/블러 및 플로팅 툴팁(`[ ✏️ 수정 ]`, `[ 🗑️ 삭제 ]`, 모바일은 아이콘만)으로 손쉽게 편집하고 드래그하여 이동할 수 있습니다.
-- **Layer 3: User Drawing Canvas (개인 펜 필기)**: 형광펜, 일반 펜, 지우개 지원 (기기/계정별 독립 보존).
+### 9. 🧩 3중 레이어 캔버스 & 송폼 키패드
+- **Layer 1: Base Canvas (악보 이미지)**: 단면 보기 및 2곡 양면 보기, 다크 모드 스마트 반전.
+- **Layer 2: Sticker DOM Layer (송폼 칩 & 인터랙티브 텍스트상자 객체)**: `[A]`, `[Chorus]` 등의 송폼 파트 칩과 코드 스티커 배치. 평상시에는 테두리 없이 깔끔한 텍스트만 표시되며, 탭 선택 시 은은한 테두리/블러 및 플로팅 툴팁(`[ ✏️ 수정 ]`, `[ 🗑️ 삭제 ]`)으로 손쉽게 편집하고 드래그하여 이동할 수 있습니다.
+- **Layer 3: User Drawing Canvas (개인 펜 필기)**: 형광펜, 일반 펜, 지우개, 실행 취소/다시 실행 지원 (기기/계정별 독립 보존).
 - **태블릿 최적화 송폼 진행 순서(Flow) 빌더**: 44px 높이의 큼직한 알약형 버튼으로 태블릿 터치 편의성을 극대화하였으며, 불필요한 잔버튼이나 드래그 핸들 없이 **버튼을 꾹 눌러(180ms 롱프레스 & 햅틱 진동) 자유롭게 잡고 순서를 이동**하고, **더블 탭(더블 클릭)으로 경쾌하게 삭제**할 수 있습니다. 또한 순서 입력창에 **`[×]` 라운드 키패드**를 제공하여 `C×2`, `Chorus×3` 등 반복 배수를 직관적으로 구성합니다.
 
 ---
@@ -113,7 +141,7 @@ Firebase 클라우드 외에도 개인 Google Drive 계정과의 이중 백업�
 
 ```text
 continote/
-├── index.html          # 메인 UI 마크업 (3계층 뷰, 모달, 헤더 및 툴바)
+├── index.html          # 메인 UI 마크업 (3계층 뷰, 뷰어 툴바, 팝오버, 모달, 브랜드 헤더)
 ├── css/
 │   └── style.css       # 테마 디자인 토큰, 캔버스 레이어, 스티커 스케일링, 모달 스타일
 ├── js/
@@ -121,15 +149,26 @@ continote/
 │   ├── firebase.js     # Firebase Auth & Firestore 백엔드 (조직, 멤버십, 콘티 세트, 마스터 악보)
 │   ├── phash.js        # 64비트 DCT 시각적 악보 지문 추출 및 해밍 거리 중복 판정 엔진
 │   ├── db.js           # IndexedDB Local-First 저장소 (데이터 무손실 마이그레이션, 자동 계정 승계)
-│   ├── canvas.js       # Base 악보 및 User Drawing 캔버스 렌더링 & 스티커 스케일
+│   ├── canvas.js       # Base 악보 및 User Drawing 캔버스 렌더링, Undo/Redo 엔진, 스티커 스케일
 │   ├── crop.js         # Auto-Crop 여백 감지 알고리즘 & 수동 크롭 8개 핸들
 │   ├── drive.js        # Google Drive v3 REST API 2단계 지연 백업 서비스
 │   ├── sample.js       # 첫 방문자를 위한 체험용 샘플 악보 자동 생성기
-│   ├── state.js        # 전역 상태 관리 및 사용자 세션 캐시
+│   ├── state.js        # 전역 상태 관리 및 사용자 세션 캐시 (펜/지우개 두께 독립 기억)
 │   ├── stickers.js     # 송폼 스티커 DOM 레이어 생성, 터치/마우스 드래그 & 삭제
 │   └── zoom.js         # 편집 모드 줌/팬 엔진 (3중 레이어 동기화 스케일링)
-├── manifest.json       # PWA 매니페스트 (홈 화면 추가, 독립 앱 구동)
-├── sw.js               # Service Worker 오프라인 캐싱 지원
+├── icons/              # 브랜드 가이드 비주얼 에셋
+│   ├── favicon.svg     # SVG 벡터 파비콘
+│   ├── favicon-32.png  # 32×32 파비콘
+│   ├── favicon-16.png  # 16×16 파비콘
+│   ├── icon-512.png    # 홈 화면 512×512 앱 아이콘 (Beige 라이트)
+│   ├── icon-192.png    # 홈 화면 192×192 앱 아이콘
+│   ├── icon-dark-512.png # 512×512 앱 아이콘 (Deep Black 다크)
+│   ├── icon.svg        # 마스터 벡터 엠블럼
+│   ├── og-image.png    # SNS 공유 미리보기 카드 (1200×630)
+│   ├── empty-state.png # 빈 화면 안내 그래픽
+│   └── splash.png      # 스플래시 스크린 그래픽
+├── manifest.json       # PWA 매니페스트 (홈 화면 추가, 테마 컬러 동기화)
+├── sw.js               # Service Worker 오프라인 캐싱 지원 (continote-v40)
 ├── server.js           # 제로 의존성 초경량 로컬 개발 서버 (Node.js 기본 모듈)
 ├── package.json        # 프로젝트 메타데이터 및 실행 스크립트
 └── README.md           # 프로젝트 문서
@@ -137,8 +176,9 @@ continote/
 
 ---
 
-## 🚀 빠른 시작 (로컬 실행)
+## 🚀 빠른 시작 (로컬 실행 & 배포)
 
+### 로컬 실행
 별도의 외부 패키지 설치(`npm install`) 없이 순수 Node.js만으로 즉시 실행 가능합니다.
 
 ```bash
@@ -151,17 +191,28 @@ node server.js
 # http://localhost:3000
 ```
 
+### 프로덕션 배포
+Firebase CLI를 통해 정적 호스팅에 배포됩니다.
+
+```bash
+# Firebase 호스팅 배포
+firebase deploy --only hosting
+```
+
+- **배포 라이브 URL**: [https://contiz.web.app](https://contiz.web.app)
+
 ---
 
 ## 🛠️ 기술 스택
 
-- **Frontend Core**: HTML5, Vanilla JavaScript (ES Modules), Vanilla CSS3
-- **Cloud Backend**: Firebase Authentication, Cloud Firestore (실시간 양방향 onSnapshot 구독)
+- **Frontend Core**: HTML5, Vanilla JavaScript (ES Modules), Vanilla CSS3, Tailwind CSS CDN
+- **Cloud Backend**: Firebase Authentication, Cloud Firestore (실시간 양방향 `onSnapshot` 구독)
 - **Image Recognition**: Canvas 2D DCT Perceptual Hashing (pHash Engine)
 - **Local Storage**: IndexedDB API (`continote_v3_db`, Local-First SWR), Web Storage API
 - **Cloud Backup**: Google Drive v3 REST API, Google Identity Services (GIS)
-- **PWA & Offline**: Service Worker Cache API, Web App Manifest
+- **PWA & Offline**: Service Worker Cache API (`continote-v40`), Web App Manifest
 - **Server**: Zero-dependency Node.js HTTP Server
+- **Hosting**: Firebase Hosting
 
 ---
 

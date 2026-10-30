@@ -3212,6 +3212,19 @@ export function isTwoPageViewActive() {
   return isEligibleMenu && (state.viewSheetCount === 2) && isLandscape && (viewerW >= 640) && (state.songs.length > 1);
 }
 
+/** 2면 보기 시 책 펼침 양면 페어링 시작 인덱스 계산 (첫 곡이 리드 시트인 경우 독립 멘트 페이지 보호) */
+export function getAlignedTwoPageIndex(idx) {
+  if (idx <= 0) return 0;
+  const hasFirstLeadSheet = Boolean(state.songs[0]?.isLeadSheet);
+  if (hasFirstLeadSheet) {
+    // 첫 곡이 리드 시트인 경우:
+    // idx 0은 리드 시트 단독 페이지이며, 일반 악보는 1-2, 3-4, 5-6 페어로 묶임!
+    return Math.floor((idx - 1) / 2) * 2 + 1;
+  }
+  // 일반적인 경우: 0-1, 2-3, 4-5 페어로 묶임
+  return Math.floor(idx / 2) * 2;
+}
+
 /** 2면 편집 시 현재 활성화(포커스)된 슬롯의 곡 데이터 및 컨테이너 반환 */
 export function getActiveTwoPageEditing() {
   const isTwo = isTwoPageViewActive();
@@ -3263,8 +3276,8 @@ export async function openViewerForSong(songIndex) {
   state.viewerReturnView = null;
   state.locked = true; // 뷰어 진입 시 기본은 보기 상태(locked)
   if (isTwoPageViewActive()) {
-    // 2곡 보기 모드에서는 책 펼침 양면 페어(1-2, 3-4, 5-6...) 기준 짝수 인덱스로 정렬
-    state.currentIndex = Math.floor(songIndex / 2) * 2;
+    // 2곡 보기 모드에서는 책 펼침 양면 페어 기준 인덱스로 정렬 (첫 곡 리드 시트 시 오프셋 보호)
+    state.currentIndex = getAlignedTwoPageIndex(songIndex);
   } else {
     state.currentIndex = songIndex;
   }
@@ -3316,8 +3329,11 @@ export async function renderAll() {
   }
 
   const isTwoPage = isTwoPageViewActive();
-  if (isTwoPage && state.currentIndex % 2 !== 0) {
-    state.currentIndex = Math.floor(state.currentIndex / 2) * 2;
+  if (isTwoPage) {
+    const aligned = getAlignedTwoPageIndex(state.currentIndex);
+    if (state.currentIndex !== aligned) {
+      state.currentIndex = aligned;
+    }
   }
   const songLeft = state.songs[state.currentIndex];
   const songRight = isTwoPage ? (state.songs[state.currentIndex + 1] || null) : null;
@@ -4506,7 +4522,10 @@ function triggerSheetTransition(direction) {
 
 function goPrev() {
   if (!state.locked) return;
-  const step = isTwoPageViewActive() ? 2 : 1;
+  const hasFirstLeadSheet = Boolean(state.songs[0]?.isLeadSheet);
+  const isTwoPage = isTwoPageViewActive();
+  // 첫 곡이 리드 시트이고 현재 index 1(첫 번째 악보)에 있다면 1단계만 뒤로 이동하여 리드 시트로 복귀
+  const step = (isTwoPage && !(hasFirstLeadSheet && state.currentIndex === 1)) ? 2 : 1;
   if (state.currentIndex > 0) {
     stopMetronome();
     resetZoom();
@@ -4519,10 +4538,12 @@ function goPrev() {
 
 function goNext() {
   if (!state.locked) return;
+  const hasFirstLeadSheet = Boolean(state.songs[0]?.isLeadSheet);
   const isTwoPage = isTwoPageViewActive();
-  const step = isTwoPage ? 2 : 1;
+  // 첫 곡이 리드 시트이고 현재 index 0(리드 시트)에 있다면 1단계만 앞으로 이동하여 첫 번째 악보로 진입
+  const step = (isTwoPage && !(hasFirstLeadSheet && state.currentIndex === 0)) ? 2 : 1;
   if (state.currentIndex < state.songs.length - 1) {
-    if (isTwoPage && state.currentIndex + 1 >= state.songs.length - 1) {
+    if (isTwoPage && state.currentIndex + 1 >= state.songs.length - 1 && !(hasFirstLeadSheet && state.currentIndex === 0)) {
       return;
     }
     stopMetronome();
@@ -5975,8 +5996,8 @@ function wireEventListeners() {
     state.locked = nextLocked;
     if (state.locked) {
       resetZoom();
-      if (isTwoPageViewActive() && state.currentIndex % 2 !== 0) {
-        state.currentIndex = Math.floor(state.currentIndex / 2) * 2;
+      if (isTwoPageViewActive()) {
+        state.currentIndex = getAlignedTwoPageIndex(state.currentIndex);
       }
     }
     saveCurrentMenuSession();
@@ -6260,9 +6281,14 @@ function wireEventListeners() {
 
       // 기존 곡 재편집 모드: 바로 악보 업데이트 및 동기화 저장
       if (ratioState.songId) {
-        const song = state.songs.find(s => s.id === ratioState.songId);
+        const targetIdx = state.songs.findIndex(s => s.id === ratioState.songId);
+        const song = targetIdx !== -1 ? state.songs[targetIdx] : null;
         if (song) {
           song.image = finalUrl;
+          if (targetIdx !== -1) {
+            state.currentIndex = targetIdx;
+          }
+          saveCurrentMenuSession();
           await saveSongs();
           await saveLibrarySong(song);
           await renderAll();
