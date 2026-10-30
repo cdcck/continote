@@ -2,7 +2,7 @@
  * ContiNote - Service Worker (PWA Offline & Install Support)
  */
 
-const CACHE_NAME = 'continote-v40';
+const CACHE_NAME = 'continote-v42';
 const STATIC_ASSETS = [
   './',
   './index.html',

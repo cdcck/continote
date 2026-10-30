@@ -157,16 +157,17 @@ body {
 /* [6. 다크 모드 시 Base Canvas(악보)만 선택적 invert(흑백 반전) 처리 / User Canvas와 스티커는 제외] */
 #baseCanvas,
 #baseCanvasRight {
-  transition: filter 0.2s ease;
-  background-color: #ffffff;
+  background-color: transparent;
+  transition: none !important;
 }
 
 html.dark #baseCanvas,
 html.dark #baseCanvasRight {
   filter: invert(1) hue-rotate(180deg);
+  background-color: transparent;
 }
 
-/* 리드 시트: 노션 & 애플 미니멀 클린 서피스 (캔버스 반전 완전 제외) */
+/* 리드 시트: 노션 & 애플 미니멀 클린 서피스 (캔버스 반전 완전 제외 및 플래시 방지) */
 html.dark #baseCanvas.leadsheet-canvas,
 html.dark #baseCanvasRight.leadsheet-canvas {
   filter: none !important;

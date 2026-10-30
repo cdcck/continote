@@ -9,6 +9,7 @@ export let currentSheetRect = { x: 0, y: 0, w: 0, h: 0 };
 
 export function clearCanvases(sheetContainer, baseCanvas, userCanvas) {
   if (baseCanvas) {
+    baseCanvas.style.opacity = '1';
     const ctx = baseCanvas.getContext('2d');
     ctx.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
   }
@@ -22,6 +23,16 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
   return new Promise((resolve) => {
     if (!song || !baseCanvas || !viewer || !sheetContainer) return resolve();
 
+    // [전환 플래시 원천 차단 페인트 가드] 렌더링이 완성되기 전까지 캔버스를 투명하게 유지
+    baseCanvas.style.opacity = '0';
+
+    const finishRender = () => {
+      requestAnimationFrame(() => {
+        baseCanvas.style.opacity = '1';
+        resolve();
+      });
+    };
+
     // [인도자 전용 리드 시트] 악보 이미지가 없는 깨끗한 노트 용지 렌더링
     if (song.isLeadSheet) {
       baseCanvas.classList.add('leadsheet-canvas');
@@ -29,13 +40,16 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
       const areaY = bounds ? bounds.y : 0;
       let areaW = bounds ? bounds.w : viewer.clientWidth;
       let areaH = bounds ? bounds.h : viewer.clientHeight;
-      if (areaW <= 0 || areaH <= 0) return resolve();
+      if (areaW <= 0 || areaH <= 0) {
+        finishRender();
+        return;
+      }
 
-      const targetAspect = 3 / 4;
-      const dw = Math.floor(Math.min(areaW * 0.96, areaH * targetAspect));
-      const dh = Math.floor(dw / targetAspect);
-      const dx = areaX + Math.floor((areaW - dw) / 2);
-      const dy = areaY + Math.max(0, Math.floor((areaH - dh) / 2));
+      // 악보 영역 전체(1곡 모드: 화면 전체 / 2곡 모드: 해당 슬롯)에 100% 꽉 차게 밀착
+      const dw = areaW;
+      const dh = areaH;
+      const dx = areaX;
+      const dy = areaY;
 
       currentSheetRect = { x: dx, y: dy, w: dw, h: dh };
       sheetContainer.style.left = `${dx}px`;
@@ -63,9 +77,11 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
 
       const sheetScaleRatio = Math.max(0.8, dw / 380);
       sheetContainer.style.setProperty('--sheet-scale', sheetScaleRatio.toFixed(3));
-      return resolve();
+      finishRender();
+      return;
     }
 
+    // 일반 악보 렌더링
     baseCanvas.classList.remove('leadsheet-canvas');
 
     const img = new Image();
@@ -75,14 +91,13 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
       let areaW = bounds ? bounds.w : viewer.clientWidth;
       let areaH = bounds ? bounds.h : viewer.clientHeight;
       if (areaW <= 0 || areaH <= 0) {
-        // 메뉴 전환 직후 아직 layout reflow 중인 경우 다음 프레임에서 1회 재측정 렌더링
         requestAnimationFrame(() => {
           const retryW = bounds ? bounds.w : viewer.clientWidth;
           const retryH = bounds ? bounds.h : viewer.clientHeight;
           if (retryW > 0 && retryH > 0) {
             renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds).then(resolve);
           } else {
-            resolve();
+            finishRender();
           }
         });
         return;
@@ -97,13 +112,11 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
 
       currentSheetRect = { x: dx, y: dy, w: dw, h: dh };
 
-      // sheetContainer를 악보 이미지 바운딩 박스에 1:1 정확히 밀착
       sheetContainer.style.left = `${dx}px`;
       sheetContainer.style.top = `${dy}px`;
       sheetContainer.style.width = `${dw}px`;
       sheetContainer.style.height = `${dh}px`;
 
-      // 기준 모바일 악보 가로폭(380px) 대비 실제 악보 크기 비례 계수 계산 (최소 0.8배 보장)
       const sheetScaleRatio = Math.max(0.8, dw / 380);
       sheetContainer.style.setProperty('--sheet-scale', sheetScaleRatio.toFixed(3));
 
@@ -120,9 +133,11 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
       ctx.fillRect(0, 0, dw, dh);
       ctx.drawImage(img, 0, 0, dw, dh);
 
-      resolve();
+      finishRender();
     };
-    img.onerror = () => resolve();
+    img.onerror = () => {
+      finishRender();
+    };
     img.src = song.image;
   });
 }

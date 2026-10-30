@@ -2505,10 +2505,8 @@ export function renderLeadSheetOverlay(container, song) {
       </button>
     </div>
 
-    <!-- [제안 2: 노션 & 애플 클린 미니멀] 본문 영역: 좌측 악센트 인용 라인 & 고가독성 폰트 -->
-    <div class="flex-1 whitespace-pre-wrap font-normal cursor-text ${fontClass} text-zinc-800 dark:text-zinc-200 pl-4 sm:pl-6 border-l-2 border-zinc-300 dark:border-zinc-700 my-1 select-text" style="font-family:inherit">
-      ${escapeHtml(song.content || '(작성된 멘트나 성경 구절이 없습니다. 우측 상단 [편집]을 눌러 내용을 작성하세요.)')}
-    </div>
+    <!-- [제안 2: 노션 & 애플 클린 미니멀] 본문 영역: 좌측 악센트 인용 라인 & 고가독성 폰트 (첫 줄 띄어쓰기 완전 제거) -->
+    <div class="flex-1 whitespace-pre-wrap font-normal cursor-text ${fontClass} text-zinc-800 dark:text-zinc-200 pl-4 sm:pl-6 border-l-2 border-zinc-300 dark:border-zinc-700 my-1 select-text" style="font-family:inherit">${escapeHtml((song.content || '').trimStart() || '(작성된 멘트나 성경 구절이 없습니다. 우측 상단 [편집]을 눌러 내용을 작성하세요.)')}</div>
   `;
 
   overlay.querySelector('.leadsheet-edit-btn')?.addEventListener('click', (e) => {
@@ -3353,13 +3351,18 @@ export async function renderAll() {
     // 슬롯 0: 좌측 악보 또는 리드 시트
     if (songLeft) {
       els.sheetContainer.style.display = 'block';
+      if (!songLeft.isLeadSheet) {
+        renderLeadSheetOverlay(els.sheetContainer, null);
+      }
       await renderBaseSheet(els.viewer, els.sheetContainer, els.baseCanvas, songLeft, { x: 0, y: 0, w: halfW, h: vh });
       await renderUserDrawing(els.sheetContainer, els.userCanvas, songLeft.id);
       if (!(songLeft.id in state.stickersBySong)) {
         await loadStickers(songLeft.id);
       }
       renderStickerLayer(els.stickerLayer, els.sheetContainer, songLeft.id);
-      renderLeadSheetOverlay(els.sheetContainer, songLeft);
+      if (songLeft.isLeadSheet) {
+        renderLeadSheetOverlay(els.sheetContainer, songLeft);
+      }
     } else {
       clearCanvases(els.sheetContainer, els.baseCanvas, els.userCanvas);
       renderStickerLayer(els.stickerLayer, els.sheetContainer, null);
@@ -3370,13 +3373,18 @@ export async function renderAll() {
     if (songRight) {
       if (els.sheetContainerRight) {
         els.sheetContainerRight.style.display = 'block';
+        if (!songRight.isLeadSheet) {
+          renderLeadSheetOverlay(els.sheetContainerRight, null);
+        }
         await renderBaseSheet(els.viewer, els.sheetContainerRight, els.baseCanvasRight, songRight, { x: halfW + gap, y: 0, w: halfW, h: vh });
         await renderUserDrawing(els.sheetContainerRight, els.userCanvasRight, songRight.id);
         if (!(songRight.id in state.stickersBySong)) {
           await loadStickers(songRight.id);
         }
         renderStickerLayer(els.stickerLayerRight, els.sheetContainerRight, songRight.id);
-        renderLeadSheetOverlay(els.sheetContainerRight, songRight);
+        if (songRight.isLeadSheet) {
+          renderLeadSheetOverlay(els.sheetContainerRight, songRight);
+        }
       }
     } else {
       if (els.sheetContainerRight) {
@@ -3396,13 +3404,18 @@ export async function renderAll() {
     }
     if (songLeft) {
       els.sheetContainer.style.display = 'block';
+      if (!songLeft.isLeadSheet) {
+        renderLeadSheetOverlay(els.sheetContainer, null);
+      }
       await renderBaseSheet(els.viewer, els.sheetContainer, els.baseCanvas, songLeft);
       await renderUserDrawing(els.sheetContainer, els.userCanvas, songLeft.id);
       if (!(songLeft.id in state.stickersBySong)) {
         await loadStickers(songLeft.id);
       }
       renderStickerLayer(els.stickerLayer, els.sheetContainer, songLeft.id);
-      renderLeadSheetOverlay(els.sheetContainer, songLeft);
+      if (songLeft.isLeadSheet) {
+        renderLeadSheetOverlay(els.sheetContainer, songLeft);
+      }
     } else {
       clearCanvases(els.sheetContainer, els.baseCanvas, els.userCanvas);
       renderStickerLayer(els.stickerLayer, els.sheetContainer, null);
