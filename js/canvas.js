@@ -10,6 +10,7 @@ export let currentSheetRect = { x: 0, y: 0, w: 0, h: 0 };
 export function clearCanvases(sheetContainer, baseCanvas, userCanvas) {
   if (baseCanvas) {
     baseCanvas.style.opacity = '1';
+    baseCanvas._lastRenderKey = null;
     const ctx = baseCanvas.getContext('2d');
     ctx.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
   }
@@ -30,8 +31,9 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
 
     const isDark = document.documentElement.classList.contains('dark');
     // 스마트 가드: 동일 곡 및 동일 크기/테마일 때 불필요한 캔버스 리페인팅 원천 차단 (깜빡임 0ms)
+    // 단, 캔버스가 비워졌거나(너비/높이 0), 슬롯이 숨겨졌던 경우에는 안전하게 리페인트 수행
     const renderKey = `${song.id}_${song.isLeadSheet ? (song.content || '') : (song.image ? song.image.length : '')}_${areaW}x${areaH}_${isDark ? 'd' : 'l'}`;
-    if (baseCanvas._lastRenderKey === renderKey) {
+    if (baseCanvas._lastRenderKey === renderKey && baseCanvas.width > 0 && baseCanvas.height > 0 && sheetContainer.clientWidth > 0 && sheetContainer.style.display !== 'none') {
       return resolve();
     }
 

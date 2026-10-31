@@ -180,7 +180,7 @@ continote/
 │   ├── empty-state.png # 빈 화면 안내 그래픽
 │   └── splash.png      # 스플래시 스크린 그래픽
 ├── manifest.json       # PWA 매니페스트 (홈 화면 추가, 테마 컬러 동기화)
-├── sw.js               # Service Worker 오프라인 캐싱 지원 (continote-v49)
+├── sw.js               # Service Worker 오프라인 캐싱 지원 (continote-v50)
 ├── server.js           # 제로 의존성 초경량 로컬 개발 서버 (Node.js 기본 모듈)
 ├── package.json        # 프로젝트 메타데이터 및 실행 스크립트
 └── README.md           # 프로젝트 문서
@@ -222,7 +222,7 @@ firebase deploy --only hosting
 - **Image Recognition**: Canvas 2D DCT Perceptual Hashing (pHash Engine)
 - **Local Storage**: IndexedDB API (`continote_v3_db`, Local-First SWR), Web Storage API
 - **Cloud Backup**: Google Drive v3 REST API, Google Identity Services (GIS)
-- **PWA & Offline**: Service Worker Cache API (`continote-v49`), Web App Manifest
+- **PWA & Offline**: Service Worker Cache API (`continote-v50`), Web App Manifest
 - **Server**: Zero-dependency Node.js HTTP Server
 - **Hosting**: Firebase Hosting
 
