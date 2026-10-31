@@ -90,7 +90,7 @@ const DOM_IDS = [
   'textMemoModal', 'textMemoModalTitle', 'textMemoSongSelectBar', 'textMemoSongLeftBtn', 'textMemoSongRightBtn', 'textMemoInput', 'textMemoAddBtn',
   'chordStickerModal', 'chordStickerInput', 'chordStickerBackspaceBtn', 'chordStickerClearBtn', 'chordStickerPreview', 'chordStickerAddBtn',
   'shareModal', 'shareContiTitle', 'shareMemberSearchInput', 'shareOrgMemberCount', 'shareOrgMemberList', 'shareEmailInput', 'addShareEmailBtn', 'shareEmailList', 'copyShareLinkBtn',
-  'songMetaModal', 'songMetaModalTitle', 'songMetaNameInput', 'songMetaKeySelect', 'songMetaTimeSigSelect', 'songMetaTempoInput', 'songMetaBpmBtn', 'songMetaThemesContainer', 'songMetaSaveBtn',
+  'songMetaModal', 'songMetaModalTitle', 'songMetaNameInput', 'songMetaKeySelect', 'songMetaTimeSigSelect', 'songMetaTempoInput', 'songMetaBpmBtn', 'songMetaThemesContainer', 'songMetaPrevBtn', 'songMetaSaveBtn',
   'songMetaLibrarySyncRow', 'songMetaAddToLibraryCheckbox', 'songMetaAddToLibraryLabel', 'songMetaAddToLibraryDesc',
   'addToContiModal', 'addToContiSongTitle', 'addToContiSearchInput', 'addToContiCountBadge', 'addToContiListContainer', 'confirmAddToContiBtn',
   'pwaInstallSection', 'pwaInstallBtn', 'pwaInstallBtnText', 'pwaInstallHint',
@@ -5223,6 +5223,7 @@ function openSongMetaModalForEdit(song) {
 
   if (els.songMetaModalTitle) els.songMetaModalTitle.textContent = '곡 정보 수정';
   if (els.songMetaSaveBtn) els.songMetaSaveBtn.textContent = '수정 완료';
+  if (els.songMetaPrevBtn) hide(els.songMetaPrevBtn);
 
   els.songMetaNameInput.value = song.name || '';
   els.songMetaKeySelect.value = song.key || '';
@@ -5265,6 +5266,13 @@ function openSongMetaModal(croppedUrl, originalUrl, defaultName, pHash = null, t
   } else {
     if (els.songMetaModalTitle) els.songMetaModalTitle.textContent = '악보 정보 입력';
     if (els.songMetaSaveBtn) els.songMetaSaveBtn.textContent = '악보 등록 완료';
+  }
+  if (els.songMetaPrevBtn) {
+    if (ratioState && ratioState.img) {
+      show(els.songMetaPrevBtn, 'inline-flex');
+    } else {
+      hide(els.songMetaPrevBtn);
+    }
   }
 
   els.songMetaNameInput.value = defaultName || '';
@@ -6356,6 +6364,17 @@ function wireEventListeners() {
   document.querySelectorAll('[data-close-duplicate-modal]').forEach(el => {
     el.addEventListener('click', () => hide(els.duplicateSongModal));
   });
+
+  // 3단계(악보 정보 입력)에서 2단계(비율 조정)로 복귀
+  if (els.songMetaPrevBtn) {
+    els.songMetaPrevBtn.addEventListener('click', () => {
+      stopMetronome();
+      hide(els.songMetaModal);
+      if (ratioState && ratioState.img) {
+        show(els.ratioModal, 'flex');
+      }
+    });
+  }
 
   // 곡 메타데이터 저장 핸들러 (신규 등록 및 기존 곡 수정 통합)
   els.songMetaSaveBtn.addEventListener('click', async () => {

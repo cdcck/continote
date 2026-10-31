@@ -3,7 +3,7 @@
  */
 
 export function computeAutoCropBox(img) {
-  const maxSampleDim = 700;
+  const maxSampleDim = 800;
   const scale = Math.min(1, maxSampleDim / Math.max(img.naturalWidth, img.naturalHeight));
   const sw = Math.max(1, Math.round(img.naturalWidth * scale));
   const sh = Math.max(1, Math.round(img.naturalHeight * scale));
@@ -15,29 +15,62 @@ export function computeAutoCropBox(img) {
   ctx.drawImage(img, 0, 0, sw, sh);
 
   const imgData = ctx.getImageData(0, 0, sw, sh).data;
-  // 상단 모서리 픽셀 색상을 배경색으로 판별
-  const bgR = imgData[0], bgG = imgData[1], bgB = imgData[2];
-  const tolerance = 24;
 
-  function isBgPixel(x, y) {
-    const idx = (y * sw + x) * 4;
-    return (
-      Math.abs(imgData[idx] - bgR) <= tolerance &&
-      Math.abs(imgData[idx + 1] - bgG) <= tolerance &&
-      Math.abs(imgData[idx + 2] - bgB) <= tolerance
-    );
+  // 1. 4개 모서리(상하좌우 가장자리) 다중 샘플링을 통한 스마트 배경 밝기(Luminance) 추정
+  const cornerSamples = [];
+  const sampleInset = Math.max(2, Math.round(Math.min(sw, sh) * 0.02));
+  const samplePoints = [
+    [sampleInset, sampleInset],
+    [sw - sampleInset - 1, sampleInset],
+    [sampleInset, sh - sampleInset - 1],
+    [sw - sampleInset - 1, sh - sampleInset - 1],
+    [Math.floor(sw / 2), sampleInset],
+    [Math.floor(sw / 2), sh - sampleInset - 1],
+    [sampleInset, Math.floor(sh / 2)],
+    [sw - sampleInset - 1, Math.floor(sh / 2)]
+  ];
+
+  for (const [px, py] of samplePoints) {
+    const idx = (py * sw + px) * 4;
+    const lum = 0.299 * imgData[idx] + 0.587 * imgData[idx + 1] + 0.114 * imgData[idx + 2];
+    cornerSamples.push(lum);
   }
 
+  cornerSamples.sort((a, b) => a - b);
+  // 가장자리 샘플 중 상위 75% 수준의 밝기를 배경 기준 밝기로 채택 (그림자/노이즈 왜곡 차단)
+  const bgLuminance = Math.max(160, cornerSamples[Math.floor(cornerSamples.length * 0.75)] || 240);
+
+  // 2. 어두운 잉크(오선, 음표, 가사, 제목) 판별 기준 (배경보다 35 이상 어둡거나 180 미만인 픽셀)
+  const inkThreshold = Math.min(195, bgLuminance - 32);
+
+  function isInkPixel(x, y) {
+    const idx = (y * sw + x) * 4;
+    const lum = 0.299 * imgData[idx] + 0.587 * imgData[idx + 1] + 0.114 * imgData[idx + 2];
+    return lum < inkThreshold;
+  }
+
+  // 3. 통계적 노이즈 필터링 (가장자리 먼지나 1픽셀 그림자에 멈추지 않고, 유의미한 밀도 검출)
+  const minRowInkCount = Math.max(3, Math.round(sw * 0.012)); // 가로폭의 약 1.2% 이상
+  const minColInkCount = Math.max(3, Math.round(sh * 0.012)); // 세로높이의 약 1.2% 이상
+
   function hasRowContent(y) {
+    let count = 0;
     for (let x = 0; x < sw; x += 2) {
-      if (!isBgPixel(x, y)) return true;
+      if (isInkPixel(x, y)) {
+        count++;
+        if (count >= minRowInkCount) return true;
+      }
     }
     return false;
   }
 
   function hasColContent(x) {
+    let count = 0;
     for (let y = 0; y < sh; y += 2) {
-      if (!isBgPixel(x, y)) return true;
+      if (isInkPixel(x, y)) {
+        count++;
+        if (count >= minColInkCount) return true;
+      }
     }
     return false;
   }
@@ -54,11 +87,13 @@ export function computeAutoCropBox(img) {
   let right = sw - 1;
   while (right > left && !hasColContent(right)) right--;
 
-  if (top >= bottom || left >= right) {
+  // 검출 실패 또는 너무 작게 감지된 경우 원본 전체 유지
+  if (top >= bottom || left >= right || (right - left) < sw * 0.2 || (bottom - top) < sh * 0.2) {
     return { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
   }
 
-  const pad = 10;
+  // 4. 악보 가독성을 위한 시원하고 단정한 안전 패딩 (약 2%)
+  const pad = Math.round(Math.min(sw, sh) * 0.02);
   top = Math.max(0, top - pad);
   left = Math.max(0, left - pad);
   bottom = Math.min(sh - 1, bottom + pad);
