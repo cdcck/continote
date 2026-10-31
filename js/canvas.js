@@ -23,23 +23,26 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
   return new Promise((resolve) => {
     if (!song || !baseCanvas || !viewer || !sheetContainer) return resolve();
 
-    // [전환 플래시 원천 차단 페인트 가드] 렌더링이 완성되기 전까지 캔버스를 투명하게 유지
-    baseCanvas.style.opacity = '0';
+    const areaX = bounds ? bounds.x : 0;
+    const areaY = bounds ? bounds.y : 0;
+    let areaW = bounds ? bounds.w : viewer.clientWidth;
+    let areaH = bounds ? bounds.h : viewer.clientHeight;
+
+    const isDark = document.documentElement.classList.contains('dark');
+    // 스마트 가드: 동일 곡 및 동일 크기/테마일 때 불필요한 캔버스 리페인팅 원천 차단 (깜빡임 0ms)
+    const renderKey = `${song.id}_${song.isLeadSheet ? (song.content || '') : (song.image ? song.image.length : '')}_${areaW}x${areaH}_${isDark ? 'd' : 'l'}`;
+    if (baseCanvas._lastRenderKey === renderKey) {
+      return resolve();
+    }
 
     const finishRender = () => {
-      requestAnimationFrame(() => {
-        baseCanvas.style.opacity = '1';
-        resolve();
-      });
+      baseCanvas._lastRenderKey = renderKey;
+      resolve();
     };
 
     // [인도자 전용 리드 시트] 악보 이미지가 없는 깨끗한 노트 용지 렌더링
     if (song.isLeadSheet) {
       baseCanvas.classList.add('leadsheet-canvas');
-      const areaX = bounds ? bounds.x : 0;
-      const areaY = bounds ? bounds.y : 0;
-      let areaW = bounds ? bounds.w : viewer.clientWidth;
-      let areaH = bounds ? bounds.h : viewer.clientHeight;
       if (areaW <= 0 || areaH <= 0) {
         finishRender();
         return;
@@ -66,11 +69,9 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
       const ctx = baseCanvas.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const isDark = document.documentElement.classList.contains('dark');
       ctx.fillStyle = isDark ? '#18181B' : '#FAFAFA';
       ctx.fillRect(0, 0, dw, dh);
 
-      // [제안 2: 노션 & 애플 클린 미니멀] 촌스러운 줄눈/누런 띠 완전 제거, 단정하고 매끄러운 1px 외곽선
       ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)';
       ctx.lineWidth = 1;
       ctx.strokeRect(0.5, 0.5, dw - 1, dh - 1);
@@ -86,10 +87,6 @@ export function renderBaseSheet(viewer, sheetContainer, baseCanvas, song, bounds
 
     const img = new Image();
     img.onload = () => {
-      const areaX = bounds ? bounds.x : 0;
-      const areaY = bounds ? bounds.y : 0;
-      let areaW = bounds ? bounds.w : viewer.clientWidth;
-      let areaH = bounds ? bounds.h : viewer.clientHeight;
       if (areaW <= 0 || areaH <= 0) {
         requestAnimationFrame(() => {
           const retryW = bounds ? bounds.w : viewer.clientWidth;

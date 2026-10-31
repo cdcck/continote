@@ -413,7 +413,14 @@ export async function saveSongs() {
   state.songs.forEach((s, idx) => {
     s.order = idx;
   });
-  await saveCurrentConti();
+  if (state.currentContiId) {
+    await saveCurrentConti();
+  }
+  for (const s of state.songs) {
+    if (s && !s.isLeadSheet) {
+      await idbPut('library', s);
+    }
+  }
 }
 
 export async function loadStickers(songId) {

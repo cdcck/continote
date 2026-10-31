@@ -3269,7 +3269,7 @@ export function applyTwoPageDimming() {
 
   const activeSong = getActiveTwoPageEditing().song;
   if (activeSong) {
-    updateStickerSizeLabel(activeSong.stickerStep || 3);
+    updateStickerSizeLabel(activeSong.stickerStep ?? 3);
   }
 }
 
@@ -4245,7 +4245,8 @@ export function applyUIState() {
   }
   if (els.stickerSizeControls) {
     els.stickerSizeControls.style.display = canEditSong ? 'flex' : 'none';
-    updateStickerSizeLabel(state.stickerStep || 3);
+    const activeS = getActiveTwoPageEditing().song;
+    updateStickerSizeLabel(activeS?.stickerStep ?? 3);
   }
 
   // [하단 2행] 송폼 진행 순서 바 (편집 화면에서는 스티커 바 아래로 분리 표시)
@@ -4602,17 +4603,14 @@ function updateStickerSizeLabel(step) {
 
 function applySongStickerScale(song, container) {
   if (!container) return;
-  const step = Math.max(1, Math.min(7, Math.round(song?.stickerStep || state.stickerStep || 3)));
+  // 각 곡의 개별 stickerStep (지정되지 않은 경우 기본 3단계, 타 곡에 영향 없음)
+  const step = Math.max(1, Math.min(7, Math.round(song?.stickerStep ?? 3)));
   const scale = STICKER_STEP_SCALES[step] || 1.0;
   container.style.setProperty('--sticker-scale', scale);
 }
 
 function applyStickerStep(step) {
   const clamped = Math.max(1, Math.min(7, Math.round(step || 3)));
-  state.stickerStep = clamped;
-  state.stickerScale = STICKER_STEP_SCALES[clamped] || 1.0;
-  document.documentElement.style.setProperty('--sticker-scale', state.stickerScale);
-
   const { song, container } = getActiveTwoPageEditing();
   if (song) {
     song.stickerStep = clamped;
@@ -4624,10 +4622,9 @@ function applyStickerStep(step) {
       debounceSyncLibraryToDrive();
     }
   } else if (container) {
-    container.style.setProperty('--sticker-scale', state.stickerScale);
+    container.style.setProperty('--sticker-scale', STICKER_STEP_SCALES[clamped] || 1.0);
   }
   updateStickerSizeLabel(clamped);
-  savePreferences();
 }
 
 function renderSongformStickyChips() {
@@ -4850,7 +4847,8 @@ function openChordModal() {
 
 function updateChordStickerPreview() {
   const raw = els.chordStickerInput?.value ?? '';
-  const val = raw.length > 0 ? raw : 'C';
+  const realText = raw.replace(/␣/g, ' ');
+  const val = realText.length > 0 ? realText : 'C';
   if (els.chordStickerPreview) {
     els.chordStickerPreview.innerHTML = formatChordHtml(val);
   }
@@ -4858,12 +4856,12 @@ function updateChordStickerPreview() {
 
 function placeChordSticker(chordText) {
   if (state.activeMenu !== 'leader' && state.viewerReturnView !== 'songLibrary') return;
-  const rawText = chordText || '';
-  if (!rawText.trim()) {
+  const realText = (chordText || '').replace(/␣/g, ' ');
+  if (!realText.trim()) {
     alert('코드 텍스트를 입력해주세요.');
     return;
   }
-  const text = rawText;
+  const text = realText;
   const { song, container, stickerLayer } = getActiveTwoPageEditing();
   if (!song) {
     alert('먼저 악보를 등록해주세요.');
@@ -7220,40 +7218,68 @@ function wireEventListeners() {
   });
 
   const ROOT_NOTES = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+
+  function insertChordChar(char) {
+    if (!els.chordStickerInput) return;
+    const input = els.chordStickerInput;
+    const val = input.value || '';
+    const start = input.selectionStart ?? val.length;
+    const end = input.selectionEnd ?? start;
+
+    if (ROOT_NOTES.includes(char)) {
+      const beforeCursor = val.slice(0, start);
+      if (/\/[\s␣]*$/.test(beforeCursor)) {
+        input.value = val.slice(0, start) + char + val.slice(end);
+        const newPos = start + char.length;
+        try { input.setSelectionRange(newPos, newPos); } catch (_) {}
+      } else {
+        input.value = char;
+        try { input.setSelectionRange(char.length, char.length); } catch (_) {}
+      }
+    } else {
+      input.value = val.slice(0, start) + char + val.slice(end);
+      const newPos = start + char.length;
+      try { input.setSelectionRange(newPos, newPos); } catch (_) {}
+    }
+    updateChordStickerPreview();
+    input.focus();
+  }
+
+  function deleteChordChar() {
+    if (!els.chordStickerInput) return;
+    const input = els.chordStickerInput;
+    const val = input.value || '';
+    const start = input.selectionStart ?? val.length;
+    const end = input.selectionEnd ?? start;
+
+    if (start !== end) {
+      input.value = val.slice(0, start) + val.slice(end);
+      try { input.setSelectionRange(start, start); } catch (_) {}
+    } else if (start > 0) {
+      input.value = val.slice(0, start - 1) + val.slice(start);
+      try { input.setSelectionRange(start - 1, start - 1); } catch (_) {}
+    }
+    updateChordStickerPreview();
+    input.focus();
+  }
+
   document.querySelectorAll('.chord-key-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const char = btn.dataset.chordChar;
-      if (!char || !els.chordStickerInput) return;
-      const currentVal = els.chordStickerInput.value || '';
-      if (ROOT_NOTES.includes(char)) {
-        if (/\/ *$/.test(currentVal)) {
-          els.chordStickerInput.value = currentVal + char;
-        } else {
-          els.chordStickerInput.value = char;
-        }
-      } else {
-        els.chordStickerInput.value = currentVal + char;
-      }
-      updateChordStickerPreview();
-      els.chordStickerInput.focus();
+      if (!char) return;
+      insertChordChar(char);
     });
   });
 
   if (els.chordStickerSpaceBtn) {
     els.chordStickerSpaceBtn.addEventListener('click', () => {
-      if (!els.chordStickerInput) return;
-      els.chordStickerInput.value += ' ';
-      updateChordStickerPreview();
-      els.chordStickerInput.focus();
+      insertChordChar('␣');
     });
   }
 
   if (els.chordStickerBackspaceBtn) {
     els.chordStickerBackspaceBtn.addEventListener('click', () => {
-      if (!els.chordStickerInput) return;
-      els.chordStickerInput.value = els.chordStickerInput.value.slice(0, -1);
-      updateChordStickerPreview();
-      els.chordStickerInput.focus();
+      deleteChordChar();
     });
   }
 
@@ -7267,12 +7293,29 @@ function wireEventListeners() {
   }
 
   if (els.chordStickerInput) {
-    els.chordStickerInput.addEventListener('input', updateChordStickerPreview);
+    els.chordStickerInput.addEventListener('input', () => {
+      if (els.chordStickerInput.value.includes(' ')) {
+        const selStart = els.chordStickerInput.selectionStart;
+        els.chordStickerInput.value = els.chordStickerInput.value.replace(/ /g, '␣');
+        try { els.chordStickerInput.setSelectionRange(selStart, selStart); } catch (_) {}
+      }
+      updateChordStickerPreview();
+    });
     els.chordStickerInput.addEventListener('keydown', (e) => {
+      if (e.key === ' ') {
+        e.preventDefault();
+        const selStart = els.chordStickerInput.selectionStart ?? els.chordStickerInput.value.length;
+        const selEnd = els.chordStickerInput.selectionEnd ?? selStart;
+        const v = els.chordStickerInput.value;
+        els.chordStickerInput.value = v.slice(0, selStart) + '␣' + v.slice(selEnd);
+        try { els.chordStickerInput.setSelectionRange(selStart + 1, selStart + 1); } catch (_) {}
+        updateChordStickerPreview();
+        return;
+      }
       if (e.key === 'Enter') {
         e.preventDefault();
         const val = els.chordStickerInput.value || '';
-        if (val.trim()) placeChordSticker(val);
+        if (val.replace(/␣/g, ' ').trim()) placeChordSticker(val);
       }
     });
   }
@@ -7280,7 +7323,7 @@ function wireEventListeners() {
   if (els.chordStickerAddBtn) {
     els.chordStickerAddBtn.addEventListener('click', () => {
       const val = els.chordStickerInput?.value || '';
-      if (val.trim()) placeChordSticker(val);
+      if (val.replace(/␣/g, ' ').trim()) placeChordSticker(val);
       else alert('코드 텍스트를 입력해주세요.');
     });
   }
