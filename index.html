@@ -2002,6 +2002,13 @@
           <input id="chordStickerInput" type="text" placeholder="예: C, Am7, F#sus4, G/B"
             class="flex-1 min-w-0 px-3 py-2 rounded-xl border text-sm sm:text-base font-bold outline-none focus:ring-2"
             style="border-color:var(--border);background:var(--surface-2);color:var(--text)" autofocus />
+          <button id="chordStickerSpaceBtn" type="button"
+            class="px-2.5 py-2 rounded-xl border text-sm font-bold active:scale-95 transition-all shrink-0 flex items-center justify-center"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" title="공백 추가 (Space)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" class="w-4 h-4">
+              <path d="M5 10v4h14v-4" />
+            </svg>
+          </button>
           <button id="chordStickerBackspaceBtn" type="button"
             class="px-2.5 py-2 rounded-xl border text-sm font-bold active:scale-95 transition-all shrink-0"
             style="border-color:var(--border);background:var(--surface-2);color:var(--text)" title="한 글자 지우기">⌫</button>
@@ -2011,37 +2018,70 @@
         </div>
       </div>
 
-      <!-- 2. 근음 버튼 (C, D, E, F, G, A, B) -->
+      <!-- 2. 근음 및 변화표 (1줄 10열) -->
       <div>
-        <label class="block text-xs font-semibold mb-1.5" style="color:var(--text-dim)">근음 (Root)</label>
-        <div class="grid grid-cols-7 gap-1">
-          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">근음 및 변화표</label>
+        <div class="grid grid-cols-10 gap-1">
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
             style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="C">C</button>
-          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
             style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="D">D</button>
-          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
             style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="E">E</button>
-          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
             style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="F">F</button>
-          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
             style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="G">G</button>
-          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
             style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="A">A</button>
-          <button type="button" class="chord-key-btn py-2 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-extrabold active:scale-95 transition-all"
             style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="B">B</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="#">#</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="♭">♭</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="/">/</button>
         </div>
       </div>
 
-      <!-- 3. 변화표 및 슬래시 버튼 (#, ♭, /) -->
+      <!-- 3. 코드 성격 및 퀄리티 -->
       <div>
-        <label class="block text-xs font-semibold mb-1.5" style="color:var(--text-dim)">변화표 및 베이스</label>
-        <div class="grid grid-cols-3 gap-1.5">
-          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-bold active:scale-95 transition-all"
-            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="#"># (Sharp)</button>
-          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-bold active:scale-95 transition-all"
-            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="♭">♭ (Flat)</button>
-          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-sm font-bold active:scale-95 transition-all"
-            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="/">/ (Slash)</button>
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">코드 성격</label>
+        <div class="grid grid-cols-6 gap-1">
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="m">m</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="M">M</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="maj">maj</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="dim">dim</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="aug">aug</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="sus4">sus4</button>
+        </div>
+      </div>
+
+      <!-- 4. 윗첨자 숫자 및 확장 -->
+      <div>
+        <label class="block text-xs font-semibold mb-1" style="color:var(--text-dim)">윗첨자 숫자 및 확장</label>
+        <div class="grid grid-cols-7 gap-1">
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="²">²</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="⁴">⁴</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="⁵">⁵</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="⁶">⁶</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="⁷">⁷</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="⁹">⁹</button>
+          <button type="button" class="chord-key-btn py-1.5 rounded-xl border text-xs sm:text-sm font-bold active:scale-95 transition-all"
+            style="border-color:var(--border);background:var(--surface-2);color:var(--text)" data-chord-char="add9">add9</button>
         </div>
       </div>
 

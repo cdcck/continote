@@ -282,6 +282,17 @@ html.dark .conti-date-chip {
   align-items: center;
   justify-content: center;
   letter-spacing: -0.02em;
+  white-space: pre !important;
+}
+
+.sticker.chord .chord-sup {
+  font-size: 0.78em;
+  line-height: 1;
+  display: inline-block;
+  transform: translateY(-0.22em);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  vertical-align: baseline;
 }
 
 .dark .sticker.chord {

@@ -1,3 +1,23 @@
+const SUPERSCRIPT_MAP = {
+  '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4',
+  '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9'
+};
+
+export function formatChordHtml(rawText) {
+  if (!rawText) return '';
+  const escaped = rawText
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  return escaped.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (match) => {
+    const normalDigits = match.split('').map(ch => SUPERSCRIPT_MAP[ch] || ch).join('');
+    return `<span class="chord-sup">${normalDigits}</span>`;
+  });
+}
+
 /**
  * ContiNote - Sticker DOM Layer & Drag System
  */
@@ -28,7 +48,11 @@ export function createStickerElement(songId, item, viewer) {
   el.className = `sticker ${typeClass} ${isI ? 'part-serif-i' : ''} ${isBis ? 'part-bis' : ''}`;
   el.style.left = item.x + '%';
   el.style.top = item.y + '%';
-  el.textContent = item.label;
+  if (isChord) {
+    el.innerHTML = formatChordHtml(item.label);
+  } else {
+    el.textContent = item.label;
+  }
 
   let isPointerDown = false;
   let dragging = false;

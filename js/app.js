@@ -25,7 +25,7 @@ import {
 import {
   computeAutoCropBox, renderCroppedDataURL, syncCropBoxDOM
 } from './crop.js';
-import { renderStickerLayer } from './stickers.js';
+import { renderStickerLayer, formatChordHtml } from './stickers.js';
 import { setupZoomAndPan, resetZoom, updateZoomVisibility } from './zoom.js';
 import {
   setDriveAccessToken, getDriveAccessToken, hasDriveAuth, getDriveTokenExpiresAt,
@@ -88,7 +88,7 @@ const DOM_IDS = [
   'settingsView', 'themeSystemBtn', 'themeLightBtn', 'themeDarkBtn', 'navHBtn', 'navVBtn', 'pageAnimSmoothBtn', 'pageAnimInstantBtn', 'viewCount1Btn', 'viewCount2Btn', 'songformManageList', 'newLabelInput', 'addLabelBtn', 'cloudSyncStatusBadge', 'cloudUserOrgDisplay', 'cloudUserEmailDisplay',
   'themeManageList', 'newThemeInput', 'addThemeBtn',
   'textMemoModal', 'textMemoModalTitle', 'textMemoSongSelectBar', 'textMemoSongLeftBtn', 'textMemoSongRightBtn', 'textMemoInput', 'textMemoAddBtn',
-  'chordStickerModal', 'chordStickerInput', 'chordStickerBackspaceBtn', 'chordStickerClearBtn', 'chordStickerPreview', 'chordStickerAddBtn',
+  'chordStickerModal', 'chordStickerInput', 'chordStickerSpaceBtn', 'chordStickerBackspaceBtn', 'chordStickerClearBtn', 'chordStickerPreview', 'chordStickerAddBtn',
   'shareModal', 'shareContiTitle', 'shareMemberSearchInput', 'shareOrgMemberCount', 'shareOrgMemberList', 'shareEmailInput', 'addShareEmailBtn', 'shareEmailList', 'copyShareLinkBtn',
   'songMetaModal', 'songMetaModalTitle', 'songMetaNameInput', 'songMetaKeySelect', 'songMetaTimeSigSelect', 'songMetaTempoInput', 'songMetaBpmBtn', 'songMetaThemesContainer', 'songMetaPrevBtn', 'songMetaSaveBtn',
   'songMetaLibrarySyncRow', 'songMetaAddToLibraryCheckbox', 'songMetaAddToLibraryLabel', 'songMetaAddToLibraryDesc',
@@ -3266,6 +3266,11 @@ export function applyTwoPageDimming() {
       els.sheetContainerRight.classList.remove('sheet-slot-dimmed', 'sheet-slot-active');
     }
   }
+
+  const activeSong = getActiveTwoPageEditing().song;
+  if (activeSong) {
+    updateStickerSizeLabel(activeSong.stickerStep || 3);
+  }
 }
 
 export async function openViewerForSong(songIndex) {
@@ -3422,6 +3427,15 @@ export async function renderAll() {
       renderLeadSheetOverlay(els.sheetContainer, null);
     }
   }
+  applySongStickerScale(songLeft, els.sheetContainer);
+  if (songRight) {
+    applySongStickerScale(songRight, els.sheetContainerRight);
+  }
+  const curActiveSong = getActiveTwoPageEditing().song;
+  if (curActiveSong) {
+    updateStickerSizeLabel(curActiveSong.stickerStep || 3);
+  }
+
   updateUndoRedoUI();
   renderSongformStickyChips();
   applyUIState();
@@ -4586,11 +4600,32 @@ function updateStickerSizeLabel(step) {
   }
 }
 
+function applySongStickerScale(song, container) {
+  if (!container) return;
+  const step = Math.max(1, Math.min(7, Math.round(song?.stickerStep || state.stickerStep || 3)));
+  const scale = STICKER_STEP_SCALES[step] || 1.0;
+  container.style.setProperty('--sticker-scale', scale);
+}
+
 function applyStickerStep(step) {
   const clamped = Math.max(1, Math.min(7, Math.round(step || 3)));
   state.stickerStep = clamped;
   state.stickerScale = STICKER_STEP_SCALES[clamped] || 1.0;
   document.documentElement.style.setProperty('--sticker-scale', state.stickerScale);
+
+  const { song, container } = getActiveTwoPageEditing();
+  if (song) {
+    song.stickerStep = clamped;
+    applySongStickerScale(song, container);
+    saveSongs();
+    if (state.currentContiId) {
+      debounceSyncContiDetail(state.currentContiId);
+    } else if (state.viewerReturnView === 'songLibrary') {
+      debounceSyncLibraryToDrive();
+    }
+  } else if (container) {
+    container.style.setProperty('--sticker-scale', state.stickerScale);
+  }
   updateStickerSizeLabel(clamped);
   savePreferences();
 }
@@ -4814,19 +4849,21 @@ function openChordModal() {
 }
 
 function updateChordStickerPreview() {
-  const val = (els.chordStickerInput?.value || '').trim() || 'C';
+  const raw = els.chordStickerInput?.value ?? '';
+  const val = raw.length > 0 ? raw : 'C';
   if (els.chordStickerPreview) {
-    els.chordStickerPreview.textContent = val;
+    els.chordStickerPreview.innerHTML = formatChordHtml(val);
   }
 }
 
 function placeChordSticker(chordText) {
   if (state.activeMenu !== 'leader' && state.viewerReturnView !== 'songLibrary') return;
-  const text = (chordText || '').trim();
-  if (!text) {
+  const rawText = chordText || '';
+  if (!rawText.trim()) {
     alert('코드 텍스트를 입력해주세요.');
     return;
   }
+  const text = rawText;
   const { song, container, stickerLayer } = getActiveTwoPageEditing();
   if (!song) {
     alert('먼저 악보를 등록해주세요.');
@@ -7182,15 +7219,34 @@ function wireEventListeners() {
     el.addEventListener('click', () => hide(els.chordStickerModal));
   });
 
+  const ROOT_NOTES = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
   document.querySelectorAll('.chord-key-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const char = btn.dataset.chordChar;
       if (!char || !els.chordStickerInput) return;
-      els.chordStickerInput.value += char;
+      const currentVal = els.chordStickerInput.value || '';
+      if (ROOT_NOTES.includes(char)) {
+        if (/\/ *$/.test(currentVal)) {
+          els.chordStickerInput.value = currentVal + char;
+        } else {
+          els.chordStickerInput.value = char;
+        }
+      } else {
+        els.chordStickerInput.value = currentVal + char;
+      }
       updateChordStickerPreview();
       els.chordStickerInput.focus();
     });
   });
+
+  if (els.chordStickerSpaceBtn) {
+    els.chordStickerSpaceBtn.addEventListener('click', () => {
+      if (!els.chordStickerInput) return;
+      els.chordStickerInput.value += ' ';
+      updateChordStickerPreview();
+      els.chordStickerInput.focus();
+    });
+  }
 
   if (els.chordStickerBackspaceBtn) {
     els.chordStickerBackspaceBtn.addEventListener('click', () => {
@@ -7215,16 +7271,16 @@ function wireEventListeners() {
     els.chordStickerInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        const val = (els.chordStickerInput.value || '').trim();
-        if (val) placeChordSticker(val);
+        const val = els.chordStickerInput.value || '';
+        if (val.trim()) placeChordSticker(val);
       }
     });
   }
 
   if (els.chordStickerAddBtn) {
     els.chordStickerAddBtn.addEventListener('click', () => {
-      const val = (els.chordStickerInput?.value || '').trim();
-      if (val) placeChordSticker(val);
+      const val = els.chordStickerInput?.value || '';
+      if (val.trim()) placeChordSticker(val);
       else alert('코드 텍스트를 입력해주세요.');
     });
   }
@@ -7306,12 +7362,16 @@ function wireEventListeners() {
   // 스티커 크기 조절 [- / +] (1~7단계, 기본 3단계)
   if (els.stickerSizeDecBtn) {
     els.stickerSizeDecBtn.addEventListener('click', () => {
-      applyStickerStep((state.stickerStep || 3) - 1);
+      const { song } = getActiveTwoPageEditing();
+      const current = song ? (song.stickerStep || state.stickerStep || 3) : (state.stickerStep || 3);
+      applyStickerStep(current - 1);
     });
   }
   if (els.stickerSizeIncBtn) {
     els.stickerSizeIncBtn.addEventListener('click', () => {
-      applyStickerStep((state.stickerStep || 3) + 1);
+      const { song } = getActiveTwoPageEditing();
+      const current = song ? (song.stickerStep || state.stickerStep || 3) : (state.stickerStep || 3);
+      applyStickerStep(current + 1);
     });
   }
 
