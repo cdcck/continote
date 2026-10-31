@@ -6502,6 +6502,7 @@ function wireEventListeners() {
     }
 
     // [신규 곡 또는 버전 등록 모드]
+    const target = songUploadTarget || (state.viewLevel === 'songList' ? 'conti' : 'library');
     const masterSongId = pendingCroppedData?.targetSongId || null;
     const pHash = pendingCroppedData?.pHash || null;
     const songKey = generateSongKey(name, key);
@@ -6570,7 +6571,6 @@ function wireEventListeners() {
     }
 
     // 업로드 대상에 따른 분기 저장 (콘티에 추가 vs 곡 목록에 추가)
-    const target = songUploadTarget || (state.viewLevel === 'songList' ? 'conti' : 'library');
     const shouldAlsoAddToLib = els.songMetaAddToLibraryCheckbox ? els.songMetaAddToLibraryCheckbox.checked : true;
 
     if (target === 'library') {
